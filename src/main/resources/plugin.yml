@@ -1,0 +1,8 @@
+name: Blockback
+version: '1.0-SNAPSHOT'
+main: us.ironcladnetwork.blockback.Blockback
+api-version: '1.21'
+load: STARTUP
+authors: [ ClearPixels ]
+description: Revert Path Blocks and Stripped Logs
+website: IroncladNetwork.us
