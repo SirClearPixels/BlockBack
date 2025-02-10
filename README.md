@@ -7,6 +7,7 @@ BlockBack is a lightweight Minecraft plugin that enhances your gameplay by allow
 
 - Rebark Logs: Easily restore the bark on stripped logs by right-clicking with an axe.
 - Dig Up Paths: Quickly undo path blocks reverting them to dirt.
+- Un-Till Farmland: Swiftly undo a misclick with a hoe. No more jumping!
 
 
 ### Installation
@@ -20,6 +21,7 @@ BlockBack is a lightweight Minecraft plugin that enhances your gameplay by allow
 
 - Rebarking Logs: To restore the bark on a stripped log, simply right-click the stripped log while holding an axe.
 - Digging Paths: To undo a dirt path, right-click on a path block while holding a shovel.
+- Un-Tilling Farmland: To "untill" farmland, right click on farmland while olding a hoe.
 
 
 ### Configuration
