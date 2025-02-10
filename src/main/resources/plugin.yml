@@ -1,8 +1,36 @@
 name: Blockback
-version: '1.0-SNAPSHOT'
+version: ${project.version}
 main: us.ironcladnetwork.blockback.Blockback
 api-version: '1.21'
-load: STARTUP
+load: POSTWORLD
 authors: [ ClearPixels ]
-description: Revert Path Blocks and Stripped Logs
+description: Revert Path Blocks and Stripped Logs and Farmland
 website: IroncladNetwork.us
+commands:
+  barkback:
+    description: Toggle barkback functionality.
+    usage: /barkback
+    permission: blockback.bark
+
+  pathback:
+    description: Toggle pathback functionality.
+    usage: /pathback
+    permission: blockback.path
+
+  farmback:
+    description: Toggle farmback functionality.
+    usage: /farmback
+    permission: blockback.farm
+
+permissions:
+  blockback.bark:
+    default: true
+    description: Allows the player to toggle barkback.
+
+  blockback.path:
+    default: true
+    description: Allows the player to toggle pathback.
+
+  blockback.farm:
+    default: true
+    description: Allows the player to toggle farmback.
