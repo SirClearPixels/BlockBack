@@ -10,8 +10,9 @@ public final class Blockback extends JavaPlugin {
         // Log plugin startup
         getLogger().info("BlockBack is starting...");
 
-        // Initialize PlayerDataManager for persistent settings
+        // Initialize managers for persistent settings and sound configuration
         PlayerDataManager.init(this);
+        SoundConfig.init(this);
 
         // Register the event listener
         try {
@@ -25,10 +26,45 @@ public final class Blockback extends JavaPlugin {
         }
 
         // Create one instance of CommandManager and register for all commands.
-        CommandManager commandManager = new CommandManager();
-        getCommand("barkback").setExecutor(commandManager);
-        getCommand("pathback").setExecutor(commandManager);
-        getCommand("farmback").setExecutor(commandManager);
+        CommandManager commandManager;
+        try {
+            commandManager = new CommandManager();
+        } catch (Exception e) {
+            getLogger().severe("Failed to create CommandManager: " + e.getMessage());
+            e.printStackTrace();
+            Bukkit.getPluginManager().disablePlugin(this);
+            return;
+        }
+        
+        // Track command registration failures
+        int failedCommands = 0;
+        String[] requiredCommands = {"barkback", "pathback", "farmback", "blockback"};
+        
+        // Register commands with comprehensive null safety checks
+        for (String commandName : requiredCommands) {
+            if (getCommand(commandName) != null) {
+                try {
+                    getCommand(commandName).setExecutor(commandManager);
+                    getLogger().info("Command '" + commandName + "' registered successfully.");
+                } catch (Exception e) {
+                    getLogger().severe("Failed to register executor for command '" + commandName + "': " + e.getMessage());
+                    failedCommands++;
+                }
+            } else {
+                getLogger().severe("Command '" + commandName + "' not found in plugin.yml!");
+                failedCommands++;
+            }
+        }
+        
+        // Disable plugin if critical commands failed to register
+        if (failedCommands > 0) {
+            getLogger().severe("Failed to register " + failedCommands + " out of " + requiredCommands.length + " commands. Plugin functionality will be limited.");
+            if (failedCommands == requiredCommands.length) {
+                getLogger().severe("All commands failed to register. Disabling plugin.");
+                Bukkit.getPluginManager().disablePlugin(this);
+                return;
+            }
+        }
 
         // Log successful load
         getLogger().info("BlockBack has loaded successfully!");
@@ -36,7 +72,19 @@ public final class Blockback extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        // Perform any cleanup
+        getLogger().info("BlockBack is shutting down...");
+        
+        // Ensure all player data saves complete before shutdown
+        PlayerDataManager manager = PlayerDataManager.getInstance();
+        if (manager != null) {
+            boolean saveCompleted = manager.shutdown(5); // 5 second timeout
+            if (saveCompleted) {
+                getLogger().info("All player data saved successfully during shutdown.");
+            } else {
+                getLogger().warning("Player data save may be incomplete due to shutdown timeout.");
+            }
+        }
+        
         getLogger().info("BlockBack is unloaded...");
     }
 }

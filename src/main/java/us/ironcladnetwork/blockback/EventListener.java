@@ -2,8 +2,6 @@ package us.ironcladnetwork.blockback;
 
 import org.bukkit.Axis;
 import org.bukkit.Material;
-import org.bukkit.Sound;
-import org.bukkit.SoundCategory;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Orientable;
@@ -12,6 +10,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.EnumSet;
@@ -36,6 +35,7 @@ public class EventListener implements Listener {
     );
 
     private static final Map<Material, Material> STRIPPED_TO_UNSTRIPPED = new HashMap<>();
+    
 
     static {
         // --------------------------------------------------
@@ -61,6 +61,7 @@ public class EventListener implements Listener {
         STRIPPED_TO_UNSTRIPPED.put(Material.STRIPPED_CRIMSON_STEM, Material.CRIMSON_STEM);
         STRIPPED_TO_UNSTRIPPED.put(Material.STRIPPED_WARPED_HYPHAE, Material.WARPED_HYPHAE);
         STRIPPED_TO_UNSTRIPPED.put(Material.STRIPPED_WARPED_STEM, Material.WARPED_STEM);
+        STRIPPED_TO_UNSTRIPPED.put(Material.STRIPPED_BAMBOO_BLOCK, Material.BAMBOO_BLOCK);
     }
 
     @EventHandler
@@ -73,11 +74,15 @@ public class EventListener implements Listener {
         ItemStack item = e.getItem();
 
         if (block == null || item == null) return;
+        
+        // Cache instances to avoid multiple getInstance() calls
+        PlayerDataManager playerData = PlayerDataManager.getInstance();
+        SoundConfig soundConfig = SoundConfig.getInstance();
 
         // --------------------------
         // 1) BarkBack (Stripped Logs)
         // --------------------------
-        if (CommandManager.isBarkBackEnabled(player)
+        if (playerData.isBarkBackEnabled(player)
                 && AXES.contains(item.getType())
                 && block.getBlockData() instanceof Orientable) {
 
@@ -89,9 +94,15 @@ public class EventListener implements Listener {
                 // Replace block but preserve axis
                 setBlockWithAxis(block, unstrippedMaterial, axis);
 
-                player.playSound(player.getLocation(),
-                        Sound.ITEM_AXE_STRIP,
-                        SoundCategory.BLOCKS, 1.0F, 0.1F);
+                // Play configurable sound
+                SoundConfig.SoundSettings soundSettings = soundConfig.getBarkBackSettings();
+                if (soundSettings.enabled) {
+                    player.playSound(player.getLocation(),
+                            soundSettings.sound,
+                            soundSettings.category,
+                            soundSettings.volume,
+                            soundSettings.pitch);
+                }
                 e.setCancelled(true);
                 return;
             }
@@ -100,14 +111,21 @@ public class EventListener implements Listener {
         // -----------------------------
         // 2) PathBack (Path -> Dirt)
         // -----------------------------
-        if (CommandManager.isPathBackEnabled(player)
+        if (playerData.isPathBackEnabled(player)
                 && SHOVELS.contains(item.getType())
                 && block.getType() == Material.DIRT_PATH) {
 
             block.setType(Material.DIRT);
-            player.playSound(player.getLocation(),
-                    Sound.ITEM_SHOVEL_FLATTEN,
-                    SoundCategory.BLOCKS, 1.0F, 1.0F);
+            
+            // Play configurable sound
+            SoundConfig.SoundSettings soundSettings = soundConfig.getPathBackSettings();
+            if (soundSettings.enabled) {
+                player.playSound(player.getLocation(),
+                        soundSettings.sound,
+                        soundSettings.category,
+                        soundSettings.volume,
+                        soundSettings.pitch);
+            }
             e.setCancelled(true);
             return;
         }
@@ -115,13 +133,20 @@ public class EventListener implements Listener {
         // -----------------------------
         // 3) FarmBack (Farmland -> Dirt)
         // -----------------------------
-        if (CommandManager.isFarmBackEnabled(player)
+        if (playerData.isFarmBackEnabled(player)
                 && HOES.contains(item.getType())
                 && block.getType() == Material.FARMLAND) {
             block.setType(Material.DIRT);
-            player.playSound(player.getLocation(),
-                    Sound.ITEM_HOE_TILL,
-                    SoundCategory.BLOCKS, 1.0F, 1.0F);
+            
+            // Play configurable sound
+            SoundConfig.SoundSettings soundSettings = soundConfig.getFarmBackSettings();
+            if (soundSettings.enabled) {
+                player.playSound(player.getLocation(),
+                        soundSettings.sound,
+                        soundSettings.category,
+                        soundSettings.volume,
+                        soundSettings.pitch);
+            }
             e.setCancelled(true);
             return;
         }
@@ -137,6 +162,14 @@ public class EventListener implements Listener {
             orientable.setAxis(axis);
             block.setBlockData(orientable);
         }
+    }
+
+    /**
+     * Remove player from cache when they disconnect to prevent memory leaks
+     */
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        PlayerDataManager.getInstance().removeFromCache(event.getPlayer());
     }
 
 }
