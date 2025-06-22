@@ -22,6 +22,11 @@ commands:
     usage: /farmback
     permission: blockback.farm
 
+  blockback:
+    description: Main BlockBack command with reload functionality.
+    usage: /blockback [reload]
+    permission: blockback.use
+
 permissions:
   blockback.bark:
     default: true
@@ -34,3 +39,11 @@ permissions:
   blockback.farm:
     default: true
     description: Allows the player to toggle farmback.
+
+  blockback.use:
+    default: true
+    description: Allows the player to use the main blockback command.
+
+  blockback.reload:
+    default: op
+    description: Allows the player to reload BlockBack configuration.
