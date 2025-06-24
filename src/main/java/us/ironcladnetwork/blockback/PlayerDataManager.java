@@ -16,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.Map;
+import java.util.Iterator;
 
 /**
  * Manages persistent player settings for barkback, pathback, and farmback toggles.
@@ -32,9 +34,11 @@ public class PlayerDataManager {
         public boolean pathback = true;
         public boolean farmback = true;
         public String name;
+        public long lastAccessed;
         
         public PlayerSettings(String name) {
             this.name = name;
+            this.lastAccessed = System.currentTimeMillis();
         }
         
         public PlayerSettings(String name, boolean barkback, boolean pathback, boolean farmback) {
@@ -42,6 +46,11 @@ public class PlayerDataManager {
             this.barkback = barkback;
             this.pathback = pathback;
             this.farmback = farmback;
+            this.lastAccessed = System.currentTimeMillis();
+        }
+        
+        public void updateLastAccessed() {
+            this.lastAccessed = System.currentTimeMillis();
         }
     }
 
@@ -50,11 +59,17 @@ public class PlayerDataManager {
     private final File configFile;
     private FileConfiguration config;
     private final AtomicBoolean saveInProgress = new AtomicBoolean(false);
-    private volatile boolean pendingSave = false;
+    private final AtomicBoolean pendingSave = new AtomicBoolean(false);
     private volatile CountDownLatch shutdownLatch;
+    
+    // Cache configuration
+    private static final int MAX_CACHE_SIZE = 100; // Maximum number of players to cache
+    private static final long CACHE_EXPIRY_MINUTES = 30; // Cache entries expire after 30 minutes of inactivity
+    private static final long CACHE_CLEANUP_INTERVAL_TICKS = 20 * 60 * 5; // Clean cache every 5 minutes
     
     // In-memory cache for player settings - thread-safe concurrent map
     private final ConcurrentHashMap<UUID, PlayerSettings> playerCache = new ConcurrentHashMap<>();
+    private int cacheCleanupTaskId = -1;
 
     /**
      * Initialize the PlayerDataManager. This must be called from the main plugin class.
@@ -87,6 +102,12 @@ public class PlayerDataManager {
             }
         }
         loadConfiguration();
+        
+        // Clean up any orphaned temp files from previous sessions
+        cleanupOrphanedTempFiles();
+        
+        // Start cache cleanup task
+        startCacheCleanupTask();
     }
 
     // Set default values for a new player
@@ -305,20 +326,50 @@ public class PlayerDataManager {
         }
         
         if (value instanceof String) {
-            String strValue = ((String) value).toLowerCase().trim();
-            if ("true".equals(strValue) || "yes".equals(strValue) || "1".equals(strValue)) {
+            String strValue = ((String) value).trim();
+            
+            // Handle empty strings
+            if (strValue.isEmpty()) {
+                plugin.getLogger().warning("Empty " + settingName + " setting for player " + uuid + ", using default: " + defaultValue);
+                return defaultValue;
+            }
+            
+            // Remove any special characters and normalize
+            strValue = strValue.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+            
+            // Check for true values
+            if ("true".equals(strValue) || "yes".equals(strValue) || "y".equals(strValue) || 
+                "1".equals(strValue) || "on".equals(strValue) || "enabled".equals(strValue) || 
+                "enable".equals(strValue) || "t".equals(strValue)) {
                 return true;
-            } else if ("false".equals(strValue) || "no".equals(strValue) || "0".equals(strValue)) {
+            }
+            
+            // Check for false values
+            if ("false".equals(strValue) || "no".equals(strValue) || "n".equals(strValue) || 
+                "0".equals(strValue) || "off".equals(strValue) || "disabled".equals(strValue) || 
+                "disable".equals(strValue) || "f".equals(strValue)) {
                 return false;
             }
+            
+            // If we get here, the string doesn't match any known boolean representation
+            plugin.getLogger().warning("Invalid " + settingName + " value '" + value + "' for player " + uuid + ", using default: " + defaultValue);
+            return defaultValue;
         }
         
         if (value instanceof Number) {
+            // Consider 0 as false, any other number as true
             return ((Number) value).intValue() != 0;
         }
         
-        plugin.getLogger().warning("Invalid " + settingName + " value '" + value + "' for player " + uuid + ", using default: " + defaultValue);
-        return defaultValue;
+        // Handle any other object types by attempting string conversion
+        try {
+            String strValue = value.toString().trim();
+            // Recursively call with string value
+            return validateBooleanSetting(strValue, defaultValue, settingName, uuid);
+        } catch (Exception e) {
+            plugin.getLogger().warning("Cannot parse " + settingName + " value '" + value + "' (type: " + value.getClass().getSimpleName() + ") for player " + uuid + ", using default: " + defaultValue);
+            return defaultValue;
+        }
     }
     
     /**
@@ -355,6 +406,7 @@ public class PlayerDataManager {
         // Check cache first
         PlayerSettings cached = playerCache.get(uuid);
         if (cached != null) {
+            cached.updateLastAccessed();
             switch (featureName) {
                 case "barkback": return cached.barkback;
                 case "pathback": return cached.pathback;
@@ -378,7 +430,13 @@ public class PlayerDataManager {
                 settings = loadAndValidatePlayerSettings(uuidStr, player.getName());
             }
             
-            // Cache the settings
+            // Cache the settings (check size limit first)
+            if (playerCache.size() >= MAX_CACHE_SIZE) {
+                // Remove oldest entry before adding new one
+                playerCache.entrySet().stream()
+                    .min((e1, e2) -> Long.compare(e1.getValue().lastAccessed, e2.getValue().lastAccessed))
+                    .ifPresent(entry -> playerCache.remove(entry.getKey()));
+            }
             playerCache.put(uuid, settings);
             
         } catch (Exception e) {
@@ -417,7 +475,15 @@ public class PlayerDataManager {
         if (cached == null) {
             // Create new cache entry if doesn't exist
             cached = new PlayerSettings(player.getName());
+            // Check size limit before adding
+            if (playerCache.size() >= MAX_CACHE_SIZE) {
+                playerCache.entrySet().stream()
+                    .min((e1, e2) -> Long.compare(e1.getValue().lastAccessed, e2.getValue().lastAccessed))
+                    .ifPresent(entry -> playerCache.remove(entry.getKey()));
+            }
             playerCache.put(uuid, cached);
+        } else {
+            cached.updateLastAccessed();
         }
         
         // Update the specific setting in cache
@@ -452,15 +518,29 @@ public class PlayerDataManager {
         return getFeatureSetting(player, "farmback");
     }
 
-    /// Setter methods
+    /**
+     * Sets the BarkBack feature state for a player.
+     * @param player the player to update
+     * @param enabled true to enable, false to disable
+     */
     public void setBarkBack(Player player, boolean enabled) {
         setFeatureSetting(player, "barkback", enabled);
     }
 
+    /**
+     * Sets the PathBack feature state for a player.
+     * @param player the player to update
+     * @param enabled true to enable, false to disable
+     */
     public void setPathBack(Player player, boolean enabled) {
         setFeatureSetting(player, "pathback", enabled);
     }
 
+    /**
+     * Sets the FarmBack feature state for a player.
+     * @param player the player to update
+     * @param enabled true to enable, false to disable
+     */
     public void setFarmBack(Player player, boolean enabled) {
         setFeatureSetting(player, "farmback", enabled);
     }
@@ -468,7 +548,7 @@ public class PlayerDataManager {
     // Save the configuration to players.yml asynchronously to avoid blocking the main thread.
     // Uses atomic boolean to prevent race conditions and queue pending saves.
     private void saveConfig() {
-        pendingSave = true;
+        pendingSave.set(true);
         
         // If a save is already in progress, just mark that we have a pending save
         if (!saveInProgress.compareAndSet(false, true)) {
@@ -476,13 +556,15 @@ public class PlayerDataManager {
         }
         
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            File tempFile = null;
             try {
                 // Keep saving while there are pending changes
                 do {
-                    pendingSave = false;
+                    pendingSave.set(false);
                     
                     // Create a temporary file for atomic write operations
-                    File tempFile = new File(configFile.getAbsolutePath() + ".tmp");
+                    tempFile = new File(configFile.getAbsolutePath() + ".tmp");
+                    boolean tempFileCreated = false;
                     
                     try {
                         // Create backup before saving if file exists and has content
@@ -490,6 +572,8 @@ public class PlayerDataManager {
                             createBackup();
                         }
                         
+                        // Mark that we're about to create the temp file
+                        tempFileCreated = true;
                         config.save(tempFile);
                         
                         // Atomic rename to replace the original file
@@ -497,9 +581,27 @@ public class PlayerDataManager {
                             // Fallback to direct save if rename fails
                             plugin.getLogger().warning("Atomic rename failed, falling back to direct save");
                             config.save(configFile);
+                            
+                            // Try to delete the temp file since rename failed
+                            if (tempFile.exists() && !tempFile.delete()) {
+                                // Schedule deletion on JVM exit as last resort
+                                tempFile.deleteOnExit();
+                                plugin.getLogger().warning("Failed to delete temporary file, scheduled for deletion on exit: " + tempFile.getAbsolutePath());
+                            }
                         }
+                        // If rename succeeded, tempFile no longer exists at original path
+                        tempFile = null;
+                        
                     } catch (IOException saveException) {
                         plugin.getLogger().severe("Failed to save to temporary file: " + saveException.getMessage());
+                        
+                        // Clean up temp file before trying direct save
+                        if (tempFileCreated && tempFile != null && tempFile.exists()) {
+                            if (!tempFile.delete()) {
+                                tempFile.deleteOnExit();
+                            }
+                        }
+                        
                         // Try direct save as last resort
                         try {
                             config.save(configFile);
@@ -508,17 +610,26 @@ public class PlayerDataManager {
                             throw directSaveException;
                         }
                     } finally {
-                        // Clean up temporary file if it exists
-                        if (tempFile.exists() && !tempFile.delete()) {
-                            plugin.getLogger().warning("Failed to delete temporary file: " + tempFile.getAbsolutePath());
+                        // Clean up temporary file if it still exists
+                        if (tempFile != null && tempFile.exists()) {
+                            if (!tempFile.delete()) {
+                                tempFile.deleteOnExit();
+                                plugin.getLogger().warning("Failed to delete temporary file, scheduled for deletion on exit: " + tempFile.getAbsolutePath());
+                            }
                         }
                     }
                     
-                } while (pendingSave);
+                } while (pendingSave.compareAndSet(true, false));
                 
             } catch (IOException e) {
                 plugin.getLogger().severe("Could not save players.yml asynchronously: " + e.getMessage());
             } finally {
+                // Final cleanup attempt for any lingering temp files
+                if (tempFile != null && tempFile.exists()) {
+                    if (!tempFile.delete()) {
+                        tempFile.deleteOnExit();
+                    }
+                }
                 saveInProgress.set(false);
                 
                 // Notify shutdown latch if waiting
@@ -528,7 +639,7 @@ public class PlayerDataManager {
                 }
                 
                 // Check if another save was requested while we were finishing
-                if (pendingSave) {
+                if (pendingSave.get()) {
                     saveConfig();
                 }
             }
@@ -589,7 +700,10 @@ public class PlayerDataManager {
      * @return true if all saves completed, false if timeout occurred
      */
     public boolean shutdown(int timeoutSeconds) {
-        if (!saveInProgress.get() && !pendingSave) {
+        // Stop the cache cleanup task
+        stopCacheCleanupTask();
+        
+        if (!saveInProgress.get() && !pendingSave.get()) {
             return true; // No saves pending
         }
         
@@ -608,6 +722,84 @@ public class PlayerDataManager {
             return false;
         } finally {
             shutdownLatch = null;
+        }
+    }
+    
+    /**
+     * Cleans up any orphaned .tmp files from previous sessions
+     */
+    private void cleanupOrphanedTempFiles() {
+        File dataFolder = configFile.getParentFile();
+        if (dataFolder.exists() && dataFolder.isDirectory()) {
+            File[] tempFiles = dataFolder.listFiles((dir, name) -> name.endsWith(".tmp"));
+            if (tempFiles != null && tempFiles.length > 0) {
+                for (File tempFile : tempFiles) {
+                    if (tempFile.delete()) {
+                        plugin.getLogger().info("Cleaned up orphaned temp file: " + tempFile.getName());
+                    } else {
+                        tempFile.deleteOnExit();
+                        plugin.getLogger().warning("Failed to delete orphaned temp file, scheduled for deletion on exit: " + tempFile.getName());
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Starts the cache cleanup task to prevent memory leaks
+     */
+    private void startCacheCleanupTask() {
+        cacheCleanupTaskId = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
+            cleanupCache();
+        }, CACHE_CLEANUP_INTERVAL_TICKS, CACHE_CLEANUP_INTERVAL_TICKS).getTaskId();
+    }
+    
+    /**
+     * Stops the cache cleanup task
+     */
+    public void stopCacheCleanupTask() {
+        if (cacheCleanupTaskId != -1) {
+            plugin.getServer().getScheduler().cancelTask(cacheCleanupTaskId);
+            cacheCleanupTaskId = -1;
+        }
+    }
+    
+    /**
+     * Cleans up expired cache entries and enforces size limits
+     */
+    private void cleanupCache() {
+        long now = System.currentTimeMillis();
+        long expiryTime = CACHE_EXPIRY_MINUTES * 60 * 1000;
+        
+        // Remove expired entries
+        Iterator<Map.Entry<UUID, PlayerSettings>> iterator = playerCache.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<UUID, PlayerSettings> entry = iterator.next();
+            PlayerSettings settings = entry.getValue();
+            
+            // Check if player is still online
+            if (plugin.getServer().getPlayer(entry.getKey()) != null) {
+                settings.updateLastAccessed();
+                continue;
+            }
+            
+            // Remove if expired
+            if (now - settings.lastAccessed > expiryTime) {
+                iterator.remove();
+                plugin.getLogger().fine("Removed expired cache entry for player: " + settings.name);
+            }
+        }
+        
+        // Enforce maximum cache size by removing oldest entries
+        if (playerCache.size() > MAX_CACHE_SIZE) {
+            // Convert to list and sort by last accessed time
+            playerCache.entrySet().stream()
+                .sorted((e1, e2) -> Long.compare(e1.getValue().lastAccessed, e2.getValue().lastAccessed))
+                .limit(playerCache.size() - MAX_CACHE_SIZE)
+                .forEach(entry -> {
+                    playerCache.remove(entry.getKey());
+                    plugin.getLogger().fine("Removed cache entry due to size limit: " + entry.getValue().name);
+                });
         }
     }
 } 
