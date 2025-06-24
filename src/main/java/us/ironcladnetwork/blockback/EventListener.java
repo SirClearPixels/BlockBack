@@ -17,6 +17,11 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Handles player interaction events to provide BlockBack functionality.
+ * Listens for right-click events with appropriate tools and reverts blocks
+ * based on player permissions and settings.
+ */
 public class EventListener implements Listener {
 
     private static final EnumSet<Material> AXES = EnumSet.of(
@@ -64,6 +69,13 @@ public class EventListener implements Listener {
         STRIPPED_TO_UNSTRIPPED.put(Material.STRIPPED_BAMBOO_BLOCK, Material.BAMBOO_BLOCK);
     }
 
+    /**
+     * Handles player right-click events on blocks to provide BlockBack functionality.
+     * Checks for appropriate tools, permissions, and block types to determine
+     * if a block should be reverted.
+     * 
+     * @param e the player interact event
+     */
     @EventHandler
     public void onBlockClick(PlayerInteractEvent e) {
         // Only proceed if right-click on block
@@ -78,12 +90,21 @@ public class EventListener implements Listener {
         // Cache instances to avoid multiple getInstance() calls
         PlayerDataManager playerData = PlayerDataManager.getInstance();
         SoundConfig soundConfig = SoundConfig.getInstance();
+        
+        // Defensive null checks - if instances are null, plugin wasn't initialized properly
+        if (playerData == null || soundConfig == null) {
+            return; // Silently fail to avoid spam in logs during event processing
+        }
+        
+        // Cache item type to avoid multiple getType() calls and improve performance
+        Material itemType = item.getType();
 
         // --------------------------
         // 1) BarkBack (Stripped Logs)
         // --------------------------
-        if (playerData.isBarkBackEnabled(player)
-                && AXES.contains(item.getType())
+        if (player.hasPermission("blockback.bark")
+                && playerData.isBarkBackEnabled(player)
+                && AXES.contains(itemType)
                 && block.getBlockData() instanceof Orientable) {
 
             Material unstrippedMaterial = STRIPPED_TO_UNSTRIPPED.get(block.getType());
@@ -92,7 +113,12 @@ public class EventListener implements Listener {
                 Axis axis = orientable.getAxis();
 
                 // Replace block but preserve axis
-                setBlockWithAxis(block, unstrippedMaterial, axis);
+                if (axis != null) {
+                    setBlockWithAxis(block, unstrippedMaterial, axis);
+                } else {
+                    // If axis is null, just set the block type without preserving orientation
+                    block.setType(unstrippedMaterial);
+                }
 
                 // Play configurable sound
                 SoundConfig.SoundSettings soundSettings = soundConfig.getBarkBackSettings();
@@ -111,8 +137,9 @@ public class EventListener implements Listener {
         // -----------------------------
         // 2) PathBack (Path -> Dirt)
         // -----------------------------
-        if (playerData.isPathBackEnabled(player)
-                && SHOVELS.contains(item.getType())
+        if (player.hasPermission("blockback.path")
+                && playerData.isPathBackEnabled(player)
+                && SHOVELS.contains(itemType)
                 && block.getType() == Material.DIRT_PATH) {
 
             block.setType(Material.DIRT);
@@ -133,8 +160,9 @@ public class EventListener implements Listener {
         // -----------------------------
         // 3) FarmBack (Farmland -> Dirt)
         // -----------------------------
-        if (playerData.isFarmBackEnabled(player)
-                && HOES.contains(item.getType())
+        if (player.hasPermission("blockback.farm")
+                && playerData.isFarmBackEnabled(player)
+                && HOES.contains(itemType)
                 && block.getType() == Material.FARMLAND) {
             block.setType(Material.DIRT);
             
@@ -157,7 +185,7 @@ public class EventListener implements Listener {
     private void setBlockWithAxis(Block block, Material material, Axis axis) {
         block.setType(material);
         BlockData newData = block.getBlockData();
-        if (newData instanceof Orientable) {
+        if (newData instanceof Orientable && axis != null) {
             Orientable orientable = (Orientable) newData;
             orientable.setAxis(axis);
             block.setBlockData(orientable);
@@ -165,11 +193,17 @@ public class EventListener implements Listener {
     }
 
     /**
-     * Remove player from cache when they disconnect to prevent memory leaks
+     * Removes player from cache when they disconnect to prevent memory leaks.
+     * This ensures the player cache doesn't grow indefinitely with offline players.
+     * 
+     * @param event the player quit event
      */
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
-        PlayerDataManager.getInstance().removeFromCache(event.getPlayer());
+        PlayerDataManager playerData = PlayerDataManager.getInstance();
+        if (playerData != null) {
+            playerData.removeFromCache(event.getPlayer());
+        }
     }
 
 }

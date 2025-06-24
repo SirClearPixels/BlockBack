@@ -95,7 +95,7 @@ public class SoundConfig {
             config.set("barkback.sound", "ITEM_AXE_STRIP");
             config.set("barkback.category", "BLOCKS");
             config.set("barkback.volume", 1.0);
-            config.set("barkback.pitch", 0.1);
+            config.set("barkback.pitch", 1.0);
             config.set("barkback.enabled", true);
             
             // PathBack settings
@@ -136,49 +136,109 @@ public class SoundConfig {
      * Load sound settings from configuration
      */
     private void loadSoundSettings() {
+        // Load BarkBack settings
         try {
-            // Load BarkBack settings
+            String soundName = config.getString("barkback.sound", "ITEM_AXE_STRIP");
+            String categoryName = config.getString("barkback.category", "BLOCKS");
+            
+            Sound sound;
+            SoundCategory category;
+            
+            try {
+                sound = Sound.valueOf(soundName);
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Invalid BarkBack sound '" + soundName + "', using default ITEM_AXE_STRIP");
+                sound = Sound.ITEM_AXE_STRIP;
+            }
+            
+            try {
+                category = SoundCategory.valueOf(categoryName);
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Invalid BarkBack sound category '" + categoryName + "', using default BLOCKS");
+                category = SoundCategory.BLOCKS;
+            }
+            
             barkBackSettings = new SoundSettings(
-                Sound.valueOf(config.getString("barkback.sound", "ITEM_AXE_STRIP")),
-                SoundCategory.valueOf(config.getString("barkback.category", "BLOCKS")),
-                (float) config.getDouble("barkback.volume", 1.0),
-                (float) config.getDouble("barkback.pitch", 0.1),
+                sound,
+                category,
+                validateVolume(config.getDouble("barkback.volume", 1.0), "BarkBack"),
+                validatePitch(config.getDouble("barkback.pitch", 1.0), "BarkBack"),
                 config.getBoolean("barkback.enabled", true)
             );
+        } catch (Exception e) {
+            plugin.getLogger().severe("Failed to load BarkBack sound settings: " + e.getMessage());
+            barkBackSettings = new SoundSettings(Sound.ITEM_AXE_STRIP, SoundCategory.BLOCKS, 1.0f, 1.0f, true);
+        }
+        
+        // Load PathBack settings
+        try {
+            String soundName = config.getString("pathback.sound", "ITEM_SHOVEL_FLATTEN");
+            String categoryName = config.getString("pathback.category", "BLOCKS");
             
-            // Load PathBack settings
+            Sound sound;
+            SoundCategory category;
+            
+            try {
+                sound = Sound.valueOf(soundName);
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Invalid PathBack sound '" + soundName + "', using default ITEM_SHOVEL_FLATTEN");
+                sound = Sound.ITEM_SHOVEL_FLATTEN;
+            }
+            
+            try {
+                category = SoundCategory.valueOf(categoryName);
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Invalid PathBack sound category '" + categoryName + "', using default BLOCKS");
+                category = SoundCategory.BLOCKS;
+            }
+            
             pathBackSettings = new SoundSettings(
-                Sound.valueOf(config.getString("pathback.sound", "ITEM_SHOVEL_FLATTEN")),
-                SoundCategory.valueOf(config.getString("pathback.category", "BLOCKS")),
-                (float) config.getDouble("pathback.volume", 1.0),
-                (float) config.getDouble("pathback.pitch", 1.0),
+                sound,
+                category,
+                validateVolume(config.getDouble("pathback.volume", 1.0), "PathBack"),
+                validatePitch(config.getDouble("pathback.pitch", 1.0), "PathBack"),
                 config.getBoolean("pathback.enabled", true)
             );
+        } catch (Exception e) {
+            plugin.getLogger().severe("Failed to load PathBack sound settings: " + e.getMessage());
+            pathBackSettings = new SoundSettings(Sound.ITEM_SHOVEL_FLATTEN, SoundCategory.BLOCKS, 1.0f, 1.0f, true);
+        }
+        
+        // Load FarmBack settings
+        try {
+            String soundName = config.getString("farmback.sound", "ITEM_HOE_TILL");
+            String categoryName = config.getString("farmback.category", "BLOCKS");
             
-            // Load FarmBack settings
+            Sound sound;
+            SoundCategory category;
+            
+            try {
+                sound = Sound.valueOf(soundName);
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Invalid FarmBack sound '" + soundName + "', using default ITEM_HOE_TILL");
+                sound = Sound.ITEM_HOE_TILL;
+            }
+            
+            try {
+                category = SoundCategory.valueOf(categoryName);
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Invalid FarmBack sound category '" + categoryName + "', using default BLOCKS");
+                category = SoundCategory.BLOCKS;
+            }
+            
             farmBackSettings = new SoundSettings(
-                Sound.valueOf(config.getString("farmback.sound", "ITEM_HOE_TILL")),
-                SoundCategory.valueOf(config.getString("farmback.category", "BLOCKS")),
-                (float) config.getDouble("farmback.volume", 1.0),
-                (float) config.getDouble("farmback.pitch", 1.0),
+                sound,
+                category,
+                validateVolume(config.getDouble("farmback.volume", 1.0), "FarmBack"),
+                validatePitch(config.getDouble("farmback.pitch", 1.0), "FarmBack"),
                 config.getBoolean("farmback.enabled", true)
             );
-            
-        } catch (IllegalArgumentException e) {
-            plugin.getLogger().warning("Invalid sound configuration detected: " + e.getMessage());
-            plugin.getLogger().warning("Using default sound settings");
-            loadDefaultSettings();
+        } catch (Exception e) {
+            plugin.getLogger().severe("Failed to load FarmBack sound settings: " + e.getMessage());
+            farmBackSettings = new SoundSettings(Sound.ITEM_HOE_TILL, SoundCategory.BLOCKS, 1.0f, 1.0f, true);
         }
     }
     
-    /**
-     * Load default sound settings if configuration is invalid
-     */
-    private void loadDefaultSettings() {
-        barkBackSettings = new SoundSettings(Sound.ITEM_AXE_STRIP, SoundCategory.BLOCKS, 1.0f, 0.1f, true);
-        pathBackSettings = new SoundSettings(Sound.ITEM_SHOVEL_FLATTEN, SoundCategory.BLOCKS, 1.0f, 1.0f, true);
-        farmBackSettings = new SoundSettings(Sound.ITEM_HOE_TILL, SoundCategory.BLOCKS, 1.0f, 1.0f, true);
-    }
     
     /**
      * Reload the sound configuration from file
@@ -210,5 +270,39 @@ public class SoundConfig {
      */
     public SoundSettings getFarmBackSettings() {
         return farmBackSettings;
+    }
+    
+    /**
+     * Validates and clamps volume to the valid range (0.0 to 10.0)
+     * @param value the volume value to validate
+     * @param featureName the name of the feature for logging
+     * @return validated volume value
+     */
+    private float validateVolume(double value, String featureName) {
+        if (value < 0.0) {
+            plugin.getLogger().warning(featureName + " volume " + value + " is below minimum (0.0), using 0.0");
+            return 0.0f;
+        } else if (value > 10.0) {
+            plugin.getLogger().warning(featureName + " volume " + value + " is above maximum (10.0), using 10.0");
+            return 10.0f;
+        }
+        return (float) value;
+    }
+    
+    /**
+     * Validates and clamps pitch to the valid range (0.5 to 2.0)
+     * @param value the pitch value to validate
+     * @param featureName the name of the feature for logging
+     * @return validated pitch value
+     */
+    private float validatePitch(double value, String featureName) {
+        if (value < 0.5) {
+            plugin.getLogger().warning(featureName + " pitch " + value + " is below minimum (0.5), using 0.5");
+            return 0.5f;
+        } else if (value > 2.0) {
+            plugin.getLogger().warning(featureName + " pitch " + value + " is above maximum (2.0), using 2.0");
+            return 2.0f;
+        }
+        return (float) value;
     }
 }

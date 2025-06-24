@@ -3,8 +3,24 @@ package us.ironcladnetwork.blockback;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
+/**
+ * Main plugin class for BlockBack - a Minecraft plugin that allows players to revert
+ * stripped logs, dirt paths, and farmland back to their original block types.
+ * 
+ * Features:
+ * - BarkBack: Revert stripped logs back to regular logs
+ * - PathBack: Revert dirt paths back to dirt
+ * - FarmBack: Revert farmland back to dirt
+ * 
+ * @author ClearPixels
+ * @version 1.2.0
+ */
 public final class Blockback extends JavaPlugin {
 
+    /**
+     * Called when the plugin is enabled. Initializes managers, registers events,
+     * and sets up commands.
+     */
     @Override
     public void onEnable() {
         // Log plugin startup
@@ -70,6 +86,10 @@ public final class Blockback extends JavaPlugin {
         getLogger().info("BlockBack has loaded successfully!");
     }
 
+    /**
+     * Called when the plugin is disabled. Ensures all player data is saved
+     * and cleanup tasks are properly stopped.
+     */
     @Override
     public void onDisable() {
         getLogger().info("BlockBack is shutting down...");

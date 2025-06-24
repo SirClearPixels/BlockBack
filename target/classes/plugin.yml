@@ -1,5 +1,5 @@
-name: Blockback
-version: 1.2.0
+name: BlockBack
+version: 1.3.0
 main: us.ironcladnetwork.blockback.Blockback
 api-version: '1.21'
 load: POSTWORLD
