@@ -18,6 +18,9 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.Map;
 import java.util.Iterator;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 
 /**
  * Manages persistent player settings for barkback, pathback, and farmback toggles.
@@ -30,11 +33,11 @@ public class PlayerDataManager {
      * Represents cached player settings in memory
      */
     public static class PlayerSettings {
-        public boolean barkback = true;
-        public boolean pathback = true;
-        public boolean farmback = true;
-        public String name;
-        public long lastAccessed;
+        public volatile boolean barkback = true;
+        public volatile boolean pathback = true;
+        public volatile boolean farmback = true;
+        public volatile String name;
+        public volatile long lastAccessed;
         
         public PlayerSettings(String name) {
             this.name = name;
@@ -54,7 +57,7 @@ public class PlayerDataManager {
         }
     }
 
-    private static PlayerDataManager instance;
+    private static volatile PlayerDataManager instance;
     private final JavaPlugin plugin;
     private final File configFile;
     private FileConfiguration config;
@@ -70,6 +73,21 @@ public class PlayerDataManager {
     // In-memory cache for player settings - thread-safe concurrent map
     private final ConcurrentHashMap<UUID, PlayerSettings> playerCache = new ConcurrentHashMap<>();
     private int cacheCleanupTaskId = -1;
+
+    // Folia compatibility - use fallback executor when Folia's async scheduler is available
+    private static final boolean IS_FOLIA;
+    static {
+        boolean folia;
+        try {
+            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
+            folia = true;
+        } catch (ClassNotFoundException e) {
+            folia = false;
+        }
+        IS_FOLIA = folia;
+    }
+    private ScheduledExecutorService foliaExecutor;
+    private ScheduledFuture<?> foliaCacheCleanupTask;
 
     /**
      * Initialize the PlayerDataManager. This must be called from the main plugin class.
@@ -547,103 +565,126 @@ public class PlayerDataManager {
 
     // Save the configuration to players.yml asynchronously to avoid blocking the main thread.
     // Uses atomic boolean to prevent race conditions and queue pending saves.
+    // Compatible with both Spigot (BukkitScheduler) and Folia (AsyncScheduler).
     private void saveConfig() {
         pendingSave.set(true);
-        
+
         // If a save is already in progress, just mark that we have a pending save
         if (!saveInProgress.compareAndSet(false, true)) {
             return;
         }
-        
-        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            File tempFile = null;
+
+        Runnable saveTask = this::executeSave;
+
+        if (IS_FOLIA) {
+            // Use reflection to call Folia's AsyncScheduler since it doesn't exist in Spigot API
             try {
-                // Keep saving while there are pending changes
-                do {
-                    pendingSave.set(false);
-                    
-                    // Create a temporary file for atomic write operations
-                    tempFile = new File(configFile.getAbsolutePath() + ".tmp");
-                    boolean tempFileCreated = false;
-                    
+                Object asyncScheduler = plugin.getServer().getClass().getMethod("getAsyncScheduler").invoke(plugin.getServer());
+                // AsyncScheduler.runNow(Plugin, Consumer<ScheduledTask>)
+                Class<?> scheduledTaskClass = Class.forName("io.papermc.paper.threadedregions.scheduler.ScheduledTask");
+                java.lang.reflect.Method runNow = asyncScheduler.getClass().getMethod("runNow",
+                        org.bukkit.plugin.Plugin.class, java.util.function.Consumer.class);
+                runNow.invoke(asyncScheduler, plugin,
+                        (java.util.function.Consumer<?>) scheduledTask -> saveTask.run());
+            } catch (Exception e) {
+                // Fallback to direct execution if reflection fails
+                plugin.getLogger().warning("Folia scheduler reflection failed, running save directly: " + e.getMessage());
+                new Thread(saveTask, "BlockBack-Save").start();
+            }
+        } else {
+            // SAFE-06: Unreachable when IS_FOLIA=true. BukkitScheduler is only used on Spigot/Paper.
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, saveTask);
+        }
+    }
+
+    private void executeSave() {
+        File tempFile = null;
+        try {
+            // Keep saving while there are pending changes
+            do {
+                pendingSave.set(false);
+
+                // Create a temporary file for atomic write operations
+                tempFile = new File(configFile.getAbsolutePath() + ".tmp");
+                boolean tempFileCreated = false;
+
+                try {
+                    // Create backup before saving if file exists and has content
+                    if (configFile.exists() && configFile.length() > 0) {
+                        createBackup();
+                    }
+
+                    // Mark that we're about to create the temp file
+                    tempFileCreated = true;
+                    config.save(tempFile);
+
+                    // Atomic rename to replace the original file
+                    if (!tempFile.renameTo(configFile)) {
+                        // Fallback to direct save if rename fails
+                        plugin.getLogger().warning("Atomic rename failed, falling back to direct save");
+                        config.save(configFile);
+
+                        // Try to delete the temp file since rename failed
+                        if (tempFile.exists() && !tempFile.delete()) {
+                            // Schedule deletion on JVM exit as last resort
+                            tempFile.deleteOnExit();
+                            plugin.getLogger().warning("Failed to delete temporary file, scheduled for deletion on exit: " + tempFile.getAbsolutePath());
+                        }
+                    }
+                    // If rename succeeded, tempFile no longer exists at original path
+                    tempFile = null;
+
+                } catch (IOException saveException) {
+                    plugin.getLogger().severe("Failed to save to temporary file: " + saveException.getMessage());
+
+                    // Clean up temp file before trying direct save
+                    if (tempFileCreated && tempFile != null && tempFile.exists()) {
+                        if (!tempFile.delete()) {
+                            tempFile.deleteOnExit();
+                        }
+                    }
+
+                    // Try direct save as last resort
                     try {
-                        // Create backup before saving if file exists and has content
-                        if (configFile.exists() && configFile.length() > 0) {
-                            createBackup();
-                        }
-                        
-                        // Mark that we're about to create the temp file
-                        tempFileCreated = true;
-                        config.save(tempFile);
-                        
-                        // Atomic rename to replace the original file
-                        if (!tempFile.renameTo(configFile)) {
-                            // Fallback to direct save if rename fails
-                            plugin.getLogger().warning("Atomic rename failed, falling back to direct save");
-                            config.save(configFile);
-                            
-                            // Try to delete the temp file since rename failed
-                            if (tempFile.exists() && !tempFile.delete()) {
-                                // Schedule deletion on JVM exit as last resort
-                                tempFile.deleteOnExit();
-                                plugin.getLogger().warning("Failed to delete temporary file, scheduled for deletion on exit: " + tempFile.getAbsolutePath());
-                            }
-                        }
-                        // If rename succeeded, tempFile no longer exists at original path
-                        tempFile = null;
-                        
-                    } catch (IOException saveException) {
-                        plugin.getLogger().severe("Failed to save to temporary file: " + saveException.getMessage());
-                        
-                        // Clean up temp file before trying direct save
-                        if (tempFileCreated && tempFile != null && tempFile.exists()) {
-                            if (!tempFile.delete()) {
-                                tempFile.deleteOnExit();
-                            }
-                        }
-                        
-                        // Try direct save as last resort
-                        try {
-                            config.save(configFile);
-                        } catch (IOException directSaveException) {
-                            plugin.getLogger().severe("Direct save also failed: " + directSaveException.getMessage());
-                            throw directSaveException;
-                        }
-                    } finally {
-                        // Clean up temporary file if it still exists
-                        if (tempFile != null && tempFile.exists()) {
-                            if (!tempFile.delete()) {
-                                tempFile.deleteOnExit();
-                                plugin.getLogger().warning("Failed to delete temporary file, scheduled for deletion on exit: " + tempFile.getAbsolutePath());
-                            }
+                        config.save(configFile);
+                    } catch (IOException directSaveException) {
+                        plugin.getLogger().severe("Direct save also failed: " + directSaveException.getMessage());
+                        throw directSaveException;
+                    }
+                } finally {
+                    // Clean up temporary file if it still exists
+                    if (tempFile != null && tempFile.exists()) {
+                        if (!tempFile.delete()) {
+                            tempFile.deleteOnExit();
+                            plugin.getLogger().warning("Failed to delete temporary file, scheduled for deletion on exit: " + tempFile.getAbsolutePath());
                         }
                     }
-                    
-                } while (pendingSave.compareAndSet(true, false));
-                
-            } catch (IOException e) {
-                plugin.getLogger().severe("Could not save players.yml asynchronously: " + e.getMessage());
-            } finally {
-                // Final cleanup attempt for any lingering temp files
-                if (tempFile != null && tempFile.exists()) {
-                    if (!tempFile.delete()) {
-                        tempFile.deleteOnExit();
-                    }
                 }
-                saveInProgress.set(false);
-                
-                // Notify shutdown latch if waiting
-                CountDownLatch latch = shutdownLatch;
-                if (latch != null) {
-                    latch.countDown();
-                }
-                
-                // Check if another save was requested while we were finishing
-                if (pendingSave.get()) {
-                    saveConfig();
+
+            } while (pendingSave.compareAndSet(true, false));
+
+        } catch (IOException e) {
+            plugin.getLogger().severe("Could not save players.yml asynchronously: " + e.getMessage());
+        } finally {
+            // Final cleanup attempt for any lingering temp files
+            if (tempFile != null && tempFile.exists()) {
+                if (!tempFile.delete()) {
+                    tempFile.deleteOnExit();
                 }
             }
-        });
+            saveInProgress.set(false);
+
+            // Notify shutdown latch if waiting
+            CountDownLatch latch = shutdownLatch;
+            if (latch != null) {
+                latch.countDown();
+            }
+
+            // Check if another save was requested while we were finishing
+            if (pendingSave.get()) {
+                saveConfig();
+            }
+        }
     }
 
     /**
@@ -746,21 +787,46 @@ public class PlayerDataManager {
     }
     
     /**
-     * Starts the cache cleanup task to prevent memory leaks
+     * Starts the cache cleanup task to prevent memory leaks.
+     * Uses Folia's AsyncScheduler when running on Folia, otherwise falls back to BukkitScheduler.
      */
     private void startCacheCleanupTask() {
-        cacheCleanupTaskId = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
-            cleanupCache();
-        }, CACHE_CLEANUP_INTERVAL_TICKS, CACHE_CLEANUP_INTERVAL_TICKS).getTaskId();
+        if (IS_FOLIA) {
+            long intervalMs = CACHE_CLEANUP_INTERVAL_TICKS * 50; // Convert ticks to milliseconds
+            foliaExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "BlockBack-CacheCleanup");
+                t.setDaemon(true);
+                return t;
+            });
+            foliaCacheCleanupTask = foliaExecutor.scheduleAtFixedRate(
+                    this::cleanupCache, intervalMs, intervalMs, TimeUnit.MILLISECONDS);
+        } else {
+            // SAFE-06: Unreachable when IS_FOLIA=true. BukkitScheduler is only used on Spigot/Paper.
+            cacheCleanupTaskId = plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, () -> {
+                cleanupCache();
+            }, CACHE_CLEANUP_INTERVAL_TICKS, CACHE_CLEANUP_INTERVAL_TICKS).getTaskId();
+        }
     }
-    
+
     /**
      * Stops the cache cleanup task
      */
     public void stopCacheCleanupTask() {
-        if (cacheCleanupTaskId != -1) {
-            plugin.getServer().getScheduler().cancelTask(cacheCleanupTaskId);
-            cacheCleanupTaskId = -1;
+        if (IS_FOLIA) {
+            if (foliaCacheCleanupTask != null) {
+                foliaCacheCleanupTask.cancel(false);
+                foliaCacheCleanupTask = null;
+            }
+            if (foliaExecutor != null) {
+                foliaExecutor.shutdown();
+                foliaExecutor = null;
+            }
+        } else {
+            // SAFE-06: Unreachable when IS_FOLIA=true. BukkitScheduler is only used on Spigot/Paper.
+            if (cacheCleanupTaskId != -1) {
+                plugin.getServer().getScheduler().cancelTask(cacheCleanupTaskId);
+                cacheCleanupTaskId = -1;
+            }
         }
     }
     
@@ -776,13 +842,7 @@ public class PlayerDataManager {
         while (iterator.hasNext()) {
             Map.Entry<UUID, PlayerSettings> entry = iterator.next();
             PlayerSettings settings = entry.getValue();
-            
-            // Check if player is still online
-            if (plugin.getServer().getPlayer(entry.getKey()) != null) {
-                settings.updateLastAccessed();
-                continue;
-            }
-            
+
             // Remove if expired
             if (now - settings.lastAccessed > expiryTime) {
                 iterator.remove();
