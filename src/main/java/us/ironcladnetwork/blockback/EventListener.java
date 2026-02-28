@@ -13,6 +13,8 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 
+import org.bukkit.plugin.Plugin;
+
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
@@ -40,7 +42,12 @@ public class EventListener implements Listener {
     );
 
     private static final Map<Material, Material> STRIPPED_TO_UNSTRIPPED = new HashMap<>();
-    
+
+    private final Plugin plugin;
+
+    public EventListener(Plugin plugin) {
+        this.plugin = plugin;
+    }
 
     static {
         // --------------------------------------------------
@@ -114,9 +121,11 @@ public class EventListener implements Listener {
 
                 // Replace block but preserve axis
                 if (axis != null) {
+                    FoliaCompat.assertOwnedByCurrentRegion(block, plugin);
                     setBlockWithAxis(block, unstrippedMaterial, axis);
                 } else {
                     // If axis is null, just set the block type without preserving orientation
+                    FoliaCompat.assertOwnedByCurrentRegion(block, plugin);
                     block.setType(unstrippedMaterial);
                 }
 
@@ -142,8 +151,9 @@ public class EventListener implements Listener {
                 && SHOVELS.contains(itemType)
                 && block.getType() == Material.DIRT_PATH) {
 
+            FoliaCompat.assertOwnedByCurrentRegion(block, plugin);
             block.setType(Material.DIRT);
-            
+
             // Play configurable sound
             SoundConfig.SoundSettings soundSettings = soundConfig.getPathBackSettings();
             if (soundSettings.enabled) {
@@ -164,8 +174,10 @@ public class EventListener implements Listener {
                 && playerData.isFarmBackEnabled(player)
                 && HOES.contains(itemType)
                 && block.getType() == Material.FARMLAND) {
+
+            FoliaCompat.assertOwnedByCurrentRegion(block, plugin);
             block.setType(Material.DIRT);
-            
+
             // Play configurable sound
             SoundConfig.SoundSettings soundSettings = soundConfig.getFarmBackSettings();
             if (soundSettings.enabled) {

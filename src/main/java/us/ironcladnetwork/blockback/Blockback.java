@@ -29,13 +29,18 @@ public final class Blockback extends JavaPlugin {
         // SCHED-01: Must run before PlayerDataManager.init() (constructor reads FoliaCompat.IS_FOLIA)
         FoliaCompat.init(this);
 
+        if (FoliaCompat.IS_FOLIA) {
+            getLogger().info("[BlockBack] Folia thread-safety active: region scheduler, " +
+                "volatile singletons, region ownership assertions enabled.");
+        }
+
         // Initialize managers for persistent settings and sound configuration
         PlayerDataManager.init(this);
         SoundConfig.init(this);
 
         // Register the event listener
         try {
-            Bukkit.getPluginManager().registerEvents(new EventListener(), this);
+            Bukkit.getPluginManager().registerEvents(new EventListener(this), this);
             getLogger().info("EventListener registered successfully.");
         } catch (Exception e) {
             getLogger().severe("Failed to register EventListener: " + e.getMessage());
