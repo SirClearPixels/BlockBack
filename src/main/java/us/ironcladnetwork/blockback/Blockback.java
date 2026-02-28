@@ -13,7 +13,7 @@ import org.bukkit.plugin.java.JavaPlugin;
  * - FarmBack: Revert farmland back to dirt
  * 
  * @author ClearPixels
- * @version 1.2.0
+ * @version 1.4.0
  */
 public final class Blockback extends JavaPlugin {
 
@@ -37,6 +37,8 @@ public final class Blockback extends JavaPlugin {
         } catch (Exception e) {
             getLogger().severe("Failed to register EventListener: " + e.getMessage());
             e.printStackTrace();
+            // SAFE-05: Safe on Folia -- onEnable() runs on the global tick thread during server startup.
+            // Do NOT add disablePlugin() calls to event handlers, commands, or async tasks.
             Bukkit.getPluginManager().disablePlugin(this);
             return;
         }
@@ -48,6 +50,8 @@ public final class Blockback extends JavaPlugin {
         } catch (Exception e) {
             getLogger().severe("Failed to create CommandManager: " + e.getMessage());
             e.printStackTrace();
+            // SAFE-05: Safe on Folia -- onEnable() runs on the global tick thread during server startup.
+            // Do NOT add disablePlugin() calls to event handlers, commands, or async tasks.
             Bukkit.getPluginManager().disablePlugin(this);
             return;
         }
@@ -77,6 +81,8 @@ public final class Blockback extends JavaPlugin {
             getLogger().severe("Failed to register " + failedCommands + " out of " + requiredCommands.length + " commands. Plugin functionality will be limited.");
             if (failedCommands == requiredCommands.length) {
                 getLogger().severe("All commands failed to register. Disabling plugin.");
+                // SAFE-05: Safe on Folia -- onEnable() runs on the global tick thread during server startup.
+                // Do NOT add disablePlugin() calls to event handlers, commands, or async tasks.
                 Bukkit.getPluginManager().disablePlugin(this);
                 return;
             }

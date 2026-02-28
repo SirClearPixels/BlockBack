@@ -15,15 +15,18 @@ import java.io.IOException;
  */
 public class SoundConfig {
     
-    private static SoundConfig instance;
+    private static volatile SoundConfig instance;
     private final JavaPlugin plugin;
     private final File configFile;
     private FileConfiguration config;
     
     // Sound settings for each feature
-    private SoundSettings barkBackSettings;
-    private SoundSettings pathBackSettings;
-    private SoundSettings farmBackSettings;
+    // SAFE-04: volatile ensures new SoundSettings references are visible to all threads
+    // after reloadConfig(). SoundSettings is already immutable (all fields are final),
+    // so volatile reference write atomically publishes the complete new object.
+    private volatile SoundSettings barkBackSettings;
+    private volatile SoundSettings pathBackSettings;
+    private volatile SoundSettings farmBackSettings;
     
     /**
      * Represents sound configuration for a specific feature
