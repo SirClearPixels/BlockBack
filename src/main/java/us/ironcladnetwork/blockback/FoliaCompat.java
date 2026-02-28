@@ -1,5 +1,6 @@
 package us.ironcladnetwork.blockback;
 
+import org.bukkit.block.Block;
 import org.bukkit.plugin.Plugin;
 
 import java.lang.reflect.InvocationTargetException;
@@ -27,6 +28,9 @@ public final class FoliaCompat {
 
     // Cached runNow(Plugin, Consumer) method -- null if reflection failed.
     private static volatile Method methodRunNow;
+
+    // Cached isOwnedByCurrentRegion(Block) -- null if reflection failed or not Folia.
+    private static volatile Method methodIsOwnedByCurrentRegion;
 
     // Utility class -- no instantiation.
     private FoliaCompat() {}
@@ -70,6 +74,24 @@ public final class FoliaCompat {
                     + cause.getMessage() + "). Async saves will use Thread fallback.");
             // Do NOT call disablePlugin() -- SAFE-05 constraint.
         }
+
+        // VERIFY-01: Cache isOwnedByCurrentRegion for defensive region assertions.
+        // Separate try/catch so failure here does NOT affect the AsyncScheduler caching above.
+        try {
+            methodIsOwnedByCurrentRegion = org.bukkit.Bukkit.class.getMethod(
+                "isOwnedByCurrentRegion",
+                org.bukkit.block.Block.class
+            );
+            plugin.getLogger().info("[BlockBack] Folia region ownership check cached.");
+        } catch (NoSuchMethodException e) {
+            methodIsOwnedByCurrentRegion = null;
+            plugin.getLogger().warning(
+                "[BlockBack] isOwnedByCurrentRegion not available. Region ownership assertions disabled.");
+        } catch (Exception e) {
+            methodIsOwnedByCurrentRegion = null;
+            plugin.getLogger().warning(
+                "[BlockBack] Failed to cache isOwnedByCurrentRegion: " + e.getMessage());
+        }
     }
 
     /**
@@ -102,5 +124,35 @@ public final class FoliaCompat {
         Thread t = new Thread(task, threadName);
         t.setDaemon(true);
         t.start();
+    }
+
+    /**
+     * Defensive region ownership assertion (SAFE-07, VERIFY-01).
+     * No-op on Spigot or if reflection is unavailable.
+     * Logs WARNING on Folia if the current thread does not own the block's region.
+     * Does NOT abort the operation -- this is a diagnostic guard only.
+     *
+     * @param block  the block about to be modified
+     * @param plugin the owning plugin (for logging)
+     */
+    public static void assertOwnedByCurrentRegion(Block block, Plugin plugin) {
+        if (!IS_FOLIA || methodIsOwnedByCurrentRegion == null) return;
+        try {
+            // Static method on Bukkit -- invoke with null instance.
+            Boolean owned = (Boolean) methodIsOwnedByCurrentRegion.invoke(null, block);
+            if (owned == null || !owned) {
+                plugin.getLogger().warning(
+                    "[BlockBack] SAFE-07: Block at " + block.getWorld().getName()
+                    + " " + block.getX() + "," + block.getY() + "," + block.getZ()
+                    + " is not owned by the current region thread.");
+            }
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            plugin.getLogger().warning(
+                "[BlockBack] isOwnedByCurrentRegion invocation failed: " + cause.getMessage());
+        } catch (Exception e) {
+            plugin.getLogger().warning(
+                "[BlockBack] isOwnedByCurrentRegion error: " + e.getMessage());
+        }
     }
 }
