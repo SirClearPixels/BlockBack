@@ -21,6 +21,9 @@ import java.util.Iterator;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Manages persistent player settings for barkback, pathback, and farmback toggles.
@@ -64,7 +67,12 @@ public class PlayerDataManager {
     private final AtomicBoolean saveInProgress = new AtomicBoolean(false);
     private final AtomicBoolean pendingSave = new AtomicBoolean(false);
     private volatile CountDownLatch shutdownLatch;
-    
+
+    // SAFE-02: Protects all FileConfiguration (config) access from concurrent region threads.
+    // Read lock: concurrent reads allowed (getFeatureSetting cache-hit path is lock-free via ConcurrentHashMap).
+    // Write lock: exclusive access for config mutations, reloads, and cache-miss loads.
+    private final ReadWriteLock configLock = new ReentrantReadWriteLock();
+
     // Cache configuration
     private static final int MAX_CACHE_SIZE = 100; // Maximum number of players to cache
     private static final long CACHE_EXPIRY_MINUTES = 30; // Cache entries expire after 30 minutes of inactivity
@@ -129,6 +137,7 @@ public class PlayerDataManager {
     }
 
     // Set default values for a new player
+    // Precondition: caller must hold configLock.writeLock()
     private void setDefaults(String uuid, String name) {
         config.set(uuid + ".name", name);
         config.set(uuid + ".barkback", true);
@@ -165,6 +174,7 @@ public class PlayerDataManager {
     
     /**
      * Validate the loaded configuration structure
+     * Precondition: caller must hold configLock.writeLock() (called from loadConfiguration during reload)
      * @return true if configuration is valid
      */
     private boolean validateConfiguration() {
@@ -277,6 +287,7 @@ public class PlayerDataManager {
     
     /**
      * Create a new empty configuration with proper structure
+     * Precondition: caller must hold configLock.writeLock() (called from loadConfiguration)
      */
     private void createEmptyConfiguration() {
         config = new YamlConfiguration();
@@ -286,6 +297,7 @@ public class PlayerDataManager {
     
     /**
      * Load and validate player settings from configuration
+     * Precondition: caller must hold configLock.writeLock() or configLock.readLock()
      * @param uuid the player's UUID as string
      * @param playerName the player's current name
      * @return validated PlayerSettings object
@@ -420,8 +432,8 @@ public class PlayerDataManager {
      */
     private boolean getFeatureSetting(Player player, String featureName) {
         UUID uuid = player.getUniqueId();
-        
-        // Check cache first
+
+        // HOT PATH: lock-free cache read (ConcurrentHashMap is thread-safe)
         PlayerSettings cached = playerCache.get(uuid);
         if (cached != null) {
             cached.updateLastAccessed();
@@ -432,39 +444,49 @@ public class PlayerDataManager {
                 default: return true;
             }
         }
-        
-        // Load from file if not in cache
-        String uuidStr = uuid.toString();
+
+        // SLOW PATH: acquire write lock because cache miss may write to config (setDefaults, name fix)
         PlayerSettings settings;
-        
+        configLock.writeLock().lock();
         try {
-            if (!config.contains(uuidStr)) {
-                // New player - create defaults
-                settings = new PlayerSettings(player.getName());
-                setDefaults(uuidStr, player.getName());
-                saveConfig();
-            } else {
-                // Load existing settings with validation
-                settings = loadAndValidatePlayerSettings(uuidStr, player.getName());
+            // Double-check: another thread may have loaded while we waited for the lock
+            cached = playerCache.get(uuid);
+            if (cached != null) {
+                cached.updateLastAccessed();
+                switch (featureName) {
+                    case "barkback": return cached.barkback;
+                    case "pathback": return cached.pathback;
+                    case "farmback": return cached.farmback;
+                    default: return true;
+                }
             }
-            
-            // Cache the settings (check size limit first)
-            if (playerCache.size() >= MAX_CACHE_SIZE) {
-                // Remove oldest entry before adding new one
-                playerCache.entrySet().stream()
-                    .min((e1, e2) -> Long.compare(e1.getValue().lastAccessed, e2.getValue().lastAccessed))
-                    .ifPresent(entry -> playerCache.remove(entry.getKey()));
+
+            String uuidStr = uuid.toString();
+            try {
+                if (!config.contains(uuidStr)) {
+                    settings = new PlayerSettings(player.getName());
+                    setDefaults(uuidStr, player.getName());
+                    saveConfig();
+                } else {
+                    settings = loadAndValidatePlayerSettings(uuidStr, player.getName());
+                }
+
+                if (playerCache.size() >= MAX_CACHE_SIZE) {
+                    playerCache.entrySet().stream()
+                        .min((e1, e2) -> Long.compare(e1.getValue().lastAccessed, e2.getValue().lastAccessed))
+                        .ifPresent(entry -> playerCache.remove(entry.getKey()));
+                }
+                playerCache.put(uuid, settings);
+
+            } catch (Exception e) {
+                plugin.getLogger().severe("Critical error loading player settings for " + player.getName() + ": " + e.getMessage());
+                settings = getEmergencyDefaults(player);
+                playerCache.put(uuid, settings);
             }
-            playerCache.put(uuid, settings);
-            
-        } catch (Exception e) {
-            plugin.getLogger().severe("Critical error loading player settings for " + player.getName() + ": " + e.getMessage());
-            // Use emergency defaults and cache them
-            settings = getEmergencyDefaults(player);
-            playerCache.put(uuid, settings);
+        } finally {
+            configLock.writeLock().unlock();
         }
-        
-        // Return the requested setting
+
         switch (featureName) {
             case "barkback": return settings.barkback;
             case "pathback": return settings.pathback;
@@ -482,18 +504,21 @@ public class PlayerDataManager {
     private void setFeatureSetting(Player player, String featureName, boolean enabled) {
         UUID uuid = player.getUniqueId();
         String uuidStr = uuid.toString();
-        
-        // Update file configuration
-        config.set(uuidStr + ".name", player.getName());
-        config.set(uuidStr + "." + featureName, enabled);
+
+        // SAFE-02: Write lock for config mutation
+        configLock.writeLock().lock();
+        try {
+            config.set(uuidStr + ".name", player.getName());
+            config.set(uuidStr + "." + featureName, enabled);
+        } finally {
+            configLock.writeLock().unlock();
+        }
         saveConfig();
-        
-        // Update cache
+
+        // Update cache (ConcurrentHashMap is thread-safe, no lock needed)
         PlayerSettings cached = playerCache.get(uuid);
         if (cached == null) {
-            // Create new cache entry if doesn't exist
             cached = new PlayerSettings(player.getName());
-            // Check size limit before adding
             if (playerCache.size() >= MAX_CACHE_SIZE) {
                 playerCache.entrySet().stream()
                     .min((e1, e2) -> Long.compare(e1.getValue().lastAccessed, e2.getValue().lastAccessed))
@@ -503,15 +528,12 @@ public class PlayerDataManager {
         } else {
             cached.updateLastAccessed();
         }
-        
-        // Update the specific setting in cache
+
         switch (featureName) {
             case "barkback": cached.barkback = enabled; break;
             case "pathback": cached.pathback = enabled; break;
             case "farmback": cached.farmback = enabled; break;
         }
-        
-        // Update name in cache
         cached.name = player.getName();
     }
 
@@ -614,15 +636,31 @@ public class PlayerDataManager {
                         createBackup();
                     }
 
+                    // SAFE-02: Snapshot config under read lock, write to disk outside lock
+                    String yamlContent;
+                    configLock.readLock().lock();
+                    try {
+                        yamlContent = config.saveToString();
+                    } finally {
+                        configLock.readLock().unlock();
+                    }
+
                     // Mark that we're about to create the temp file
                     tempFileCreated = true;
-                    config.save(tempFile);
+                    java.nio.file.Files.writeString(tempFile.toPath(), yamlContent, StandardCharsets.UTF_8);
 
                     // Atomic rename to replace the original file
                     if (!tempFile.renameTo(configFile)) {
-                        // Fallback to direct save if rename fails
+                        // Fallback: snapshot under read lock, write directly to config file
                         plugin.getLogger().warning("Atomic rename failed, falling back to direct save");
-                        config.save(configFile);
+                        String fallbackContent;
+                        configLock.readLock().lock();
+                        try {
+                            fallbackContent = config.saveToString();
+                        } finally {
+                            configLock.readLock().unlock();
+                        }
+                        java.nio.file.Files.writeString(configFile.toPath(), fallbackContent, StandardCharsets.UTF_8);
 
                         // Try to delete the temp file since rename failed
                         if (tempFile.exists() && !tempFile.delete()) {
@@ -646,7 +684,15 @@ public class PlayerDataManager {
 
                     // Try direct save as last resort
                     try {
-                        config.save(configFile);
+                        // Fallback: snapshot under read lock, write directly to config file
+                        String fallbackContent;
+                        configLock.readLock().lock();
+                        try {
+                            fallbackContent = config.saveToString();
+                        } finally {
+                            configLock.readLock().unlock();
+                        }
+                        java.nio.file.Files.writeString(configFile.toPath(), fallbackContent, StandardCharsets.UTF_8);
                     } catch (IOException directSaveException) {
                         plugin.getLogger().severe("Direct save also failed: " + directSaveException.getMessage());
                         throw directSaveException;
@@ -691,15 +737,17 @@ public class PlayerDataManager {
      * Reloads the players.yml configuration and clears cache with error recovery.
      */
     public void reloadConfig() {
-        // Clear cache first to ensure fresh data
-        playerCache.clear();
-        
+        // SAFE-02: Write lock for entire reload (clears cache + reassigns config reference)
+        configLock.writeLock().lock();
         try {
+            playerCache.clear();
             loadConfiguration();
             plugin.getLogger().info("Player configuration reloaded successfully");
         } catch (Exception e) {
             plugin.getLogger().severe("Failed to reload player configuration: " + e.getMessage());
             plugin.getLogger().warning("Player data may be using fallback defaults until next restart");
+        } finally {
+            configLock.writeLock().unlock();
         }
     }
     
