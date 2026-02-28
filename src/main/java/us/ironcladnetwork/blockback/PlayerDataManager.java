@@ -82,18 +82,7 @@ public class PlayerDataManager {
     private final ConcurrentHashMap<UUID, PlayerSettings> playerCache = new ConcurrentHashMap<>();
     private int cacheCleanupTaskId = -1;
 
-    // Folia compatibility - use fallback executor when Folia's async scheduler is available
-    private static final boolean IS_FOLIA;
-    static {
-        boolean folia;
-        try {
-            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
-            folia = true;
-        } catch (ClassNotFoundException e) {
-            folia = false;
-        }
-        IS_FOLIA = folia;
-    }
+    // Folia compatibility - delegates to FoliaCompat (SCHED-01: no duplicate detection logic here)
     private ScheduledExecutorService foliaExecutor;
     private ScheduledFuture<?> foliaCacheCleanupTask;
 
@@ -598,21 +587,9 @@ public class PlayerDataManager {
 
         Runnable saveTask = this::executeSave;
 
-        if (IS_FOLIA) {
-            // Use reflection to call Folia's AsyncScheduler since it doesn't exist in Spigot API
-            try {
-                Object asyncScheduler = plugin.getServer().getClass().getMethod("getAsyncScheduler").invoke(plugin.getServer());
-                // AsyncScheduler.runNow(Plugin, Consumer<ScheduledTask>)
-                Class<?> scheduledTaskClass = Class.forName("io.papermc.paper.threadedregions.scheduler.ScheduledTask");
-                java.lang.reflect.Method runNow = asyncScheduler.getClass().getMethod("runNow",
-                        org.bukkit.plugin.Plugin.class, java.util.function.Consumer.class);
-                runNow.invoke(asyncScheduler, plugin,
-                        (java.util.function.Consumer<?>) scheduledTask -> saveTask.run());
-            } catch (Exception e) {
-                // Fallback to direct execution if reflection fails
-                plugin.getLogger().warning("Folia scheduler reflection failed, running save directly: " + e.getMessage());
-                new Thread(saveTask, "BlockBack-Save").start();
-            }
+        if (FoliaCompat.IS_FOLIA) {
+            // SCHED-02: Cached reflection via FoliaCompat (no per-call reflection overhead)
+            FoliaCompat.runAsync(plugin, saveTask, "BlockBack-Save");
         } else {
             // SAFE-06: Unreachable when IS_FOLIA=true. BukkitScheduler is only used on Spigot/Paper.
             plugin.getServer().getScheduler().runTaskAsynchronously(plugin, saveTask);
@@ -839,7 +816,7 @@ public class PlayerDataManager {
      * Uses Folia's AsyncScheduler when running on Folia, otherwise falls back to BukkitScheduler.
      */
     private void startCacheCleanupTask() {
-        if (IS_FOLIA) {
+        if (FoliaCompat.IS_FOLIA) {
             long intervalMs = CACHE_CLEANUP_INTERVAL_TICKS * 50; // Convert ticks to milliseconds
             foliaExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "BlockBack-CacheCleanup");
@@ -860,13 +837,25 @@ public class PlayerDataManager {
      * Stops the cache cleanup task
      */
     public void stopCacheCleanupTask() {
-        if (IS_FOLIA) {
+        if (FoliaCompat.IS_FOLIA) {
             if (foliaCacheCleanupTask != null) {
-                foliaCacheCleanupTask.cancel(false);
+                foliaCacheCleanupTask.cancel(false); // cancel future executions, don't interrupt current
                 foliaCacheCleanupTask = null;
             }
             if (foliaExecutor != null) {
+                // SCHED-04: Two-phase shutdown per Oracle ExecutorService Javadoc
                 foliaExecutor.shutdown();
+                try {
+                    if (!foliaExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                        foliaExecutor.shutdownNow();
+                        if (!foliaExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
+                            plugin.getLogger().warning("[BlockBack] Cache cleanup thread did not terminate cleanly.");
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    foliaExecutor.shutdownNow();
+                    Thread.currentThread().interrupt();
+                }
                 foliaExecutor = null;
             }
         } else {

@@ -26,6 +26,9 @@ public final class Blockback extends JavaPlugin {
         // Log plugin startup
         getLogger().info("BlockBack is starting...");
 
+        // SCHED-01: Must run before PlayerDataManager.init() (constructor reads FoliaCompat.IS_FOLIA)
+        FoliaCompat.init(this);
+
         // Initialize managers for persistent settings and sound configuration
         PlayerDataManager.init(this);
         SoundConfig.init(this);
