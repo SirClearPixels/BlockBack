@@ -1,0 +1,22 @@
+# Build output
+target/
+*.class
+
+# Claude Code
+.claude/
+
+# GSD planning artifacts
+.planning/
+
+# Local notes / external review docs
+/BlockBackBugReport*.md
+/BlockBackReview.md
+/SpigotPage.md
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
