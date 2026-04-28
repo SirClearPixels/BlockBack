@@ -2,12 +2,13 @@
 
 [![Modrinth](https://img.shields.io/badge/Modrinth-00AF5C?style=for-the-badge&logo=modrinth&logoColor=white)](https://modrinth.com/plugin/blockback)
 [![Modrinth Downloads](https://img.shields.io/modrinth/dt/blockback?style=flat-square&logo=modrinth&color=00AF5C&label=Modrinth)](https://modrinth.com/plugin/blockback)
+
 [![Spigot](https://img.shields.io/badge/Spigot-ED8106?style=for-the-badge&logo=spigotmc&logoColor=white)](https://www.spigotmc.org/resources/blockback.126328/)
 [![Spigot Downloads](https://img.shields.io/spiget/downloads/126328?style=flat-square&logo=spigotmc&color=ED8106&label=Spigot)](https://www.spigotmc.org/resources/blockback.126328/)
 [![Spigot Rating](https://img.shields.io/spiget/stars/126328?style=flat-square&logo=spigotmc&color=ED8106)](https://www.spigotmc.org/resources/blockback.126328/)
+
 [![Hangar](https://img.shields.io/badge/Hangar-004C99?style=for-the-badge&logo=papermc&logoColor=white)](https://hangar.papermc.io/SirClearPixels/BlockBack)
 [![Hangar Downloads](https://img.shields.io/hangar/dt/BlockBack?style=flat-square&logo=papermc&color=004C99&label=Hangar)](https://hangar.papermc.io/SirClearPixels/BlockBack)
-[![Hangar Views](https://img.shields.io/hangar/views/BlockBack?style=flat-square&logo=papermc&color=004C99&label=Views)](https://hangar.papermc.io/SirClearPixels/BlockBack)
 
 BlockBack is a feature-rich Minecraft plugin that enhances your gameplay by allowing you to rebark logs, dig up paths, and un-till farmland with simple right-clicks. Version 1.2.0 introduces player toggles, custom sounds, and extensive configuration options!
 
