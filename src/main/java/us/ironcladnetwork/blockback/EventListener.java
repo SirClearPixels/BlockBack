@@ -18,6 +18,7 @@ import org.bukkit.plugin.Plugin;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Handles player interaction events to provide BlockBack functionality.
@@ -45,8 +46,27 @@ public class EventListener implements Listener {
 
     private final Plugin plugin;
 
+    // bStats usage counters — incremented on each successful restoration.
+    // Read via pollAndReset*Count(), which atomically returns the count and resets to 0.
+    // Concurrent-safe for Folia: increments may originate from any region thread.
+    private final AtomicLong barkbackCount = new AtomicLong();
+    private final AtomicLong pathbackCount = new AtomicLong();
+    private final AtomicLong farmbackCount = new AtomicLong();
+
     public EventListener(Plugin plugin) {
         this.plugin = plugin;
+    }
+
+    public long pollAndResetBarkbackCount() {
+        return barkbackCount.getAndSet(0L);
+    }
+
+    public long pollAndResetPathbackCount() {
+        return pathbackCount.getAndSet(0L);
+    }
+
+    public long pollAndResetFarmbackCount() {
+        return farmbackCount.getAndSet(0L);
     }
 
     static {
@@ -138,6 +158,7 @@ public class EventListener implements Listener {
                             soundSettings.volume,
                             soundSettings.pitch);
                 }
+                barkbackCount.incrementAndGet();
                 e.setCancelled(true);
                 return;
             }
@@ -163,6 +184,7 @@ public class EventListener implements Listener {
                         soundSettings.volume,
                         soundSettings.pitch);
             }
+            pathbackCount.incrementAndGet();
             e.setCancelled(true);
             return;
         }
@@ -187,6 +209,7 @@ public class EventListener implements Listener {
                         soundSettings.volume,
                         soundSettings.pitch);
             }
+            farmbackCount.incrementAndGet();
             e.setCancelled(true);
             return;
         }

@@ -1,5 +1,8 @@
 package us.ironcladnetwork.blockback;
 
+import org.bstats.bukkit.Metrics;
+import org.bstats.charts.SimplePie;
+import org.bstats.charts.SingleLineChart;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -16,6 +19,9 @@ import org.bukkit.plugin.java.JavaPlugin;
  * @version 1.4.0
  */
 public final class Blockback extends JavaPlugin {
+
+    /** bStats plugin ID — see https://bstats.org/plugin/bukkit/BlockBack/31058 */
+    private static final int BSTATS_PLUGIN_ID = 31058;
 
     /**
      * Called when the plugin is enabled. Initializes managers, registers events,
@@ -39,8 +45,10 @@ public final class Blockback extends JavaPlugin {
         SoundConfig.init(this);
 
         // Register the event listener
+        EventListener eventListener;
         try {
-            Bukkit.getPluginManager().registerEvents(new EventListener(this), this);
+            eventListener = new EventListener(this);
+            Bukkit.getPluginManager().registerEvents(eventListener, this);
             getLogger().info("EventListener registered successfully.");
         } catch (Exception e) {
             getLogger().severe("Failed to register EventListener: " + e.getMessage());
@@ -49,6 +57,22 @@ public final class Blockback extends JavaPlugin {
             // Do NOT add disablePlugin() calls to event handlers, commands, or async tasks.
             Bukkit.getPluginManager().disablePlugin(this);
             return;
+        }
+
+        // bStats anonymous usage metrics. Failures here must not prevent plugin startup.
+        try {
+            Metrics metrics = new Metrics(this, BSTATS_PLUGIN_ID);
+            metrics.addCustomChart(new SimplePie("server_type",
+                    () -> FoliaCompat.IS_FOLIA ? "Folia" : "Spigot/Paper"));
+            metrics.addCustomChart(new SingleLineChart("barkback_uses",
+                    () -> (int) Math.min(Integer.MAX_VALUE, eventListener.pollAndResetBarkbackCount())));
+            metrics.addCustomChart(new SingleLineChart("pathback_uses",
+                    () -> (int) Math.min(Integer.MAX_VALUE, eventListener.pollAndResetPathbackCount())));
+            metrics.addCustomChart(new SingleLineChart("farmback_uses",
+                    () -> (int) Math.min(Integer.MAX_VALUE, eventListener.pollAndResetFarmbackCount())));
+            getLogger().info("bStats metrics initialized (plugin ID " + BSTATS_PLUGIN_ID + ").");
+        } catch (Exception e) {
+            getLogger().warning("Failed to initialize bStats metrics: " + e.getMessage());
         }
 
         // Create one instance of CommandManager and register for all commands.
