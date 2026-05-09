@@ -31,6 +31,8 @@ public class EventListener implements Listener {
             Material.WOODEN_AXE, Material.STONE_AXE, Material.GOLDEN_AXE,
             Material.IRON_AXE, Material.DIAMOND_AXE, Material.NETHERITE_AXE
     );
+    // COPPER_AXE was added in 1.21.2; resolved reflectively so the plugin still
+    // compiles against the 1.21.1 API jar and runs on older 1.21.x servers.
 
     private static final EnumSet<Material> SHOVELS = EnumSet.of(
             Material.WOODEN_SHOVEL, Material.STONE_SHOVEL, Material.GOLDEN_SHOVEL,
@@ -94,6 +96,25 @@ public class EventListener implements Listener {
         STRIPPED_TO_UNSTRIPPED.put(Material.STRIPPED_WARPED_HYPHAE, Material.WARPED_HYPHAE);
         STRIPPED_TO_UNSTRIPPED.put(Material.STRIPPED_WARPED_STEM, Material.WARPED_STEM);
         STRIPPED_TO_UNSTRIPPED.put(Material.STRIPPED_BAMBOO_BLOCK, Material.BAMBOO_BLOCK);
+
+        // 1.21.2+ — Copper Axe strips logs in vanilla; mirror that here.
+        Material copperAxe = Material.getMaterial("COPPER_AXE");
+        if (copperAxe != null) {
+            AXES.add(copperAxe);
+        }
+
+        // 1.21.3+ — Pale Oak (Pale Garden). Resolved reflectively because the
+        // enum constants don't exist in the 1.21.1 API jar this plugin builds against.
+        addStrippedMapping("STRIPPED_PALE_OAK_LOG", "PALE_OAK_LOG");
+        addStrippedMapping("STRIPPED_PALE_OAK_WOOD", "PALE_OAK_WOOD");
+    }
+
+    private static void addStrippedMapping(String strippedName, String unstrippedName) {
+        Material stripped = Material.getMaterial(strippedName);
+        Material unstripped = Material.getMaterial(unstrippedName);
+        if (stripped != null && unstripped != null) {
+            STRIPPED_TO_UNSTRIPPED.put(stripped, unstripped);
+        }
     }
 
     /**
