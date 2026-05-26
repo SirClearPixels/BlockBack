@@ -2,16 +2,6 @@
 target/
 *.class
 dependency-reduced-pom.xml
-
-# Claude Code
-.claude/
-
-# GSD planning artifacts
-.planning/
-
-# Local notes / external review docs
-/BlockBackBugReport*.md
-/BlockBackReview.md
 /SpigotPage.md
 
 # IDE
