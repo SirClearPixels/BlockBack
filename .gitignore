@@ -2,7 +2,6 @@
 target/
 *.class
 dependency-reduced-pom.xml
-/SpigotPage.md
 
 # IDE
 .idea/
