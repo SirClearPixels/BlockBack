@@ -107,6 +107,22 @@ public class EventListener implements Listener {
         // enum constants don't exist in the 1.21.1 API jar this plugin builds against.
         addStrippedMapping("STRIPPED_PALE_OAK_LOG", "PALE_OAK_LOG");
         addStrippedMapping("STRIPPED_PALE_OAK_WOOD", "PALE_OAK_WOOD");
+
+        // Discover all wood sets supplied by the running server, including Poplar.
+        for (Material material : Material.values()) {
+            String name = material.name();
+            if (name.startsWith("STRIPPED_") && (name.endsWith("_LOG") || name.endsWith("_WOOD")
+                    || name.endsWith("_STEM") || name.endsWith("_HYPHAE") || name.equals("STRIPPED_BAMBOO_BLOCK"))) {
+                addStrippedMapping(name, name.substring("STRIPPED_".length()));
+            }
+        }
+        addTool(SHOVELS, "COPPER_SHOVEL");
+        addTool(HOES, "COPPER_HOE");
+    }
+
+    private static void addTool(EnumSet<Material> tools, String name) {
+        Material material = Material.getMaterial(name);
+        if (material != null) tools.add(material);
     }
 
     private static void addStrippedMapping(String strippedName, String unstrippedName) {
