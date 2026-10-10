@@ -8,6 +8,11 @@ authors: [ ClearPixels ]
 description: Revert Path Blocks and Stripped Logs and Farmland
 website: IroncladNetwork.us
 commands:
+  copperback:
+    description: Toggle sneak-axe copper oxidation control.
+    usage: /copperback
+    permission: blockback.copper
+
   barkback:
     description: Toggle barkback functionality.
     usage: /barkback

@@ -90,7 +90,7 @@ public final class Blockback extends JavaPlugin {
         
         // Track command registration failures
         int failedCommands = 0;
-        String[] requiredCommands = {"barkback", "pathback", "farmback", "blockback"};
+        String[] requiredCommands = {"barkback", "pathback", "farmback", "copperback", "blockback"};
         
         // Register commands with comprehensive null safety checks
         for (String commandName : requiredCommands) {

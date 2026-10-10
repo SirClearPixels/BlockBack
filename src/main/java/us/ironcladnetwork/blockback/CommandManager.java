@@ -17,6 +17,15 @@ import org.bukkit.entity.Player;
  * - /blockback - Main command with status and reload subcommands
  */
 public class CommandManager implements CommandExecutor {
+    private final java.util.function.Supplier<PlayerDataManager> playerDataSupplier;
+
+    public CommandManager() {
+        this(PlayerDataManager::getInstance);
+    }
+
+    CommandManager(java.util.function.Supplier<PlayerDataManager> playerDataSupplier) {
+        this.playerDataSupplier = playerDataSupplier;
+    }
 
     /**
      * Processes all BlockBack commands and routes them to appropriate handlers.
@@ -35,7 +44,7 @@ public class CommandManager implements CommandExecutor {
         }
         
         // Cache instances to avoid multiple getInstance() calls
-        PlayerDataManager playerData = PlayerDataManager.getInstance();
+        PlayerDataManager playerData = playerDataSupplier.get();
         if (playerData == null) {
             sender.sendMessage(ChatColor.RED + "Plugin not properly initialized. Please contact an administrator.");
             return true;
@@ -56,6 +65,11 @@ public class CommandManager implements CommandExecutor {
                                      playerData::isFarmBackEnabled, playerData::setFarmBack);
         }
 
+        if (command.getName().equalsIgnoreCase("copperback")) {
+            return handleToggleCommand(player, playerData, "CopperBack", "blockback.copper",
+                                     playerData::isCopperBackEnabled, playerData::setCopperBack);
+        }
+
         if (command.getName().equalsIgnoreCase("blockback")) {
             // Main command with subcommands
             if (args.length == 0) {
@@ -68,12 +82,15 @@ public class CommandManager implements CommandExecutor {
                     ChatColor.GREEN + "Enabled" : ChatColor.RED + "Disabled";
                 String farmStatus = playerData.isFarmBackEnabled(player) ? 
                     ChatColor.GREEN + "Enabled" : ChatColor.RED + "Disabled";
+                String copperStatus = playerData.isCopperBackEnabled(player) ?
+                    ChatColor.GREEN + "Enabled" : ChatColor.RED + "Disabled";
                 
                 player.sendMessage(ChatColor.YELLOW + "BarkBack: " + barkStatus);
                 player.sendMessage(ChatColor.YELLOW + "PathBack: " + pathStatus);
                 player.sendMessage(ChatColor.YELLOW + "FarmBack: " + farmStatus);
+                player.sendMessage(ChatColor.YELLOW + "CopperBack: " + copperStatus);
                 
-                player.sendMessage(ChatColor.GRAY + "Use /barkback, /pathback, /farmback to toggle features.");
+                player.sendMessage(ChatColor.GRAY + "Use /barkback, /pathback, /farmback, /copperback to toggle features.");
                 if (player.hasPermission("blockback.reload")) {
                     player.sendMessage(ChatColor.GRAY + "Use /blockback reload to reload configuration.");
                 }

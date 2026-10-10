@@ -4,6 +4,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.plugin.Plugin;
 
 import java.io.File;
 import java.io.IOException;
@@ -67,7 +68,7 @@ public class PlayerDataManager {
     }
 
     private static volatile PlayerDataManager instance;
-    private final JavaPlugin plugin;
+    private final Plugin plugin;
     private final File configFile;
     private FileConfiguration config;
     private final AtomicBoolean saveInProgress = new AtomicBoolean(false);
@@ -109,6 +110,10 @@ public class PlayerDataManager {
     }
 
     private PlayerDataManager(JavaPlugin plugin) {
+        this(plugin, true);
+    }
+
+    PlayerDataManager(Plugin plugin, boolean scheduleCleanup) {
         this.plugin = plugin;
         File dataFolder = plugin.getDataFolder();
         if (!dataFolder.exists()) {
@@ -128,7 +133,7 @@ public class PlayerDataManager {
         cleanupOrphanedTempFiles();
         
         // Start cache cleanup task
-        startCacheCleanupTask();
+        if (scheduleCleanup) startCacheCleanupTask();
     }
 
     // Set default values for a new player
@@ -506,37 +511,35 @@ public class PlayerDataManager {
         UUID uuid = player.getUniqueId();
         String uuidStr = uuid.toString();
 
-        // SAFE-02: Write lock for config mutation
+        // Keep config and cached settings in the same write-lock transaction. On eviction,
+        // reload all saved features before changing one so other preferences survive.
         configLock.writeLock().lock();
         try {
+            PlayerSettings cached = playerCache.get(uuid);
+            if (cached == null) {
+                if (!config.contains(uuidStr)) setDefaults(uuidStr, player.getName());
+                cached = loadAndValidatePlayerSettings(uuidStr, player.getName());
+                if (playerCache.size() >= MAX_CACHE_SIZE) {
+                    playerCache.entrySet().stream()
+                            .min((e1, e2) -> Long.compare(e1.getValue().lastAccessed, e2.getValue().lastAccessed))
+                            .ifPresent(entry -> playerCache.remove(entry.getKey()));
+                }
+                playerCache.put(uuid, cached);
+            }
             config.set(uuidStr + ".name", player.getName());
             config.set(uuidStr + "." + featureName, enabled);
+            switch (featureName) {
+                case "barkback": cached.barkback = enabled; break;
+                case "pathback": cached.pathback = enabled; break;
+                case "farmback": cached.farmback = enabled; break;
+                case "copperback": cached.copperback = enabled; break;
+            }
+            cached.name = player.getName();
+            cached.updateLastAccessed();
         } finally {
             configLock.writeLock().unlock();
         }
         saveConfig();
-
-        // Update cache (ConcurrentHashMap is thread-safe, no lock needed)
-        PlayerSettings cached = playerCache.get(uuid);
-        if (cached == null) {
-            cached = new PlayerSettings(player.getName());
-            if (playerCache.size() >= MAX_CACHE_SIZE) {
-                playerCache.entrySet().stream()
-                    .min((e1, e2) -> Long.compare(e1.getValue().lastAccessed, e2.getValue().lastAccessed))
-                    .ifPresent(entry -> playerCache.remove(entry.getKey()));
-            }
-            playerCache.put(uuid, cached);
-        } else {
-            cached.updateLastAccessed();
-        }
-
-        switch (featureName) {
-            case "barkback": cached.barkback = enabled; break;
-            case "pathback": cached.pathback = enabled; break;
-            case "farmback": cached.farmback = enabled; break;
-            case "copperback": cached.copperback = enabled; break;
-        }
-        cached.name = player.getName();
     }
 
     /**
