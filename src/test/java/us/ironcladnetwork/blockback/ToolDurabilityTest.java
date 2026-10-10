@@ -22,7 +22,16 @@ import static us.ironcladnetwork.blockback.CopperBackTest.*;
 
 /** Production events/handlers with API-contract fakes, not live Minecraft evidence. */
 class ToolDurabilityTest {
-    @BeforeAll static void registry() { CopperBackTest.installMinimalRegistry(); }
+    static boolean ownsRegistry;
+    @BeforeAll static void registry() {
+        ownsRegistry = Bukkit.getServer() == null;
+        if (ownsRegistry) CopperBackTest.installMinimalRegistry();
+    }
+    @AfterAll static void releaseRegistry() throws Exception {
+        if (ownsRegistry) {
+            var field = Bukkit.class.getDeclaredField("server"); field.setAccessible(true); field.set(null, null);
+        }
+    }
     @TempDir Path directory;
     Object previousPlayers, previousSounds;
     @BeforeEach void managers() throws Exception {
@@ -225,6 +234,90 @@ class ToolDurabilityTest {
             assertEquals(failed ? 0 : 1, f.inventory.tool.damage);
         }
     }
+    @Test void copperTerminalWaxedDeniedFailedAndVanillaEventsCostNothing() {
+        for (String reason : new String[]{"terminal", "waxed", "permission", "preference", "tool", "rightclick", "offhand", "denied-block", "denied-item", "failed", "unchanged", "ordinary"}) {
+            CopperFixture f = new CopperFixture(reason.equals("terminal") ? "OXIDIZED_COPPER"
+                    : reason.equals("waxed") ? "WAXED_COPPER_BLOCK" : "COPPER_BLOCK", "");
+            if (reason.equals("permission")) f.inventory.permitted = false;
+            if (reason.equals("preference")) f.enabled = false;
+            if (reason.equals("tool")) f.inventory.tool.setType(Material.IRON_PICKAXE);
+            if (reason.equals("ordinary")) f.inventory.sneaking = false;
+            if (reason.equals("failed")) f.block.failNextUpdate = true;
+            if (reason.equals("unchanged")) f.block.ignoreNextUpdate = true;
+            var event = f.click(reason.equals("rightclick") ? Action.RIGHT_CLICK_BLOCK : Action.LEFT_CLICK_BLOCK,
+                    reason.equals("offhand") ? EquipmentSlot.OFF_HAND : EquipmentSlot.HAND);
+            if (reason.equals("denied-block")) event.setUseInteractedBlock(Event.Result.DENY);
+            if (reason.equals("denied-item")) event.setUseItemInHand(Event.Result.DENY);
+            f.listener.onCopperBlockClick(event);
+            assertEquals(0, f.inventory.tool.damage, reason);
+            f.listener.onCopperBlockBreak(new org.bukkit.event.block.BlockBreakEvent(f.block.block, f.inventory.player));
+            assertEquals(0, f.inventory.tool.damage, reason);
+        }
+    }
+    @Test void copperSwitchIsIndependentAndThrowingSoundStillChargesCompletedConversion() {
+        CopperFixture f = new CopperFixture("COPPER_BLOCK", "");
+        f.inventory.durability.publish(new ToolDurability.Settings(true, true, true, false));
+        f.listener.onCopperBlockClick(f.click(Action.LEFT_CLICK_BLOCK, EquipmentSlot.HAND));
+        assertEquals(Material.EXPOSED_COPPER, f.block.type()); assertEquals(0, f.inventory.tool.damage);
+        f.inventory.durability.publish(new ToolDurability.Settings(false, false, false, true));
+        var plugin = filePlugin(Path.of("target"));
+        var listener = new EventListener(plugin, new CopperBack(plugin, player -> true, CopperBackTest::data,
+                player -> {throw new IllegalStateException("sound rejected");}), f.inventory.durability);
+        assertDoesNotThrow(() -> listener.onCopperBlockClick(f.click(Action.LEFT_CLICK_BLOCK, EquipmentSlot.HAND)));
+        assertEquals(Material.WEATHERED_COPPER, f.block.type()); assertEquals(1, f.inventory.tool.damage);
+    }
+    @Test void pairedChestSuccessAndFailedRollbackCostOnceOrNothingWhenAvailable() {
+        if (Material.getMaterial("COPPER_CHEST") == null) return;
+        for (boolean failed : new boolean[]{false, true}) {
+            CopperFixture f = new CopperFixture("COPPER_CHEST", "[facing=north,type=left,waterlogged=false]");
+            f.block.partner = new FakeBlock(f.block.serialized.replace("left", "right"));
+            f.block.partner.failNextUpdate = failed;
+            f.listener.onCopperBlockClick(f.click(Action.LEFT_CLICK_BLOCK, EquipmentSlot.HAND));
+            assertEquals(failed ? Material.getMaterial("COPPER_CHEST") : Material.getMaterial("EXPOSED_COPPER_CHEST"), f.block.type());
+            assertEquals(failed ? 0 : 1, f.inventory.tool.damage);
+        }
+    }
+    @Test void pathAndFarmDeniedIneligibleUnchangedAndThrownWritesCostNothing() {
+        for (boolean farm : new boolean[]{false, true}) for (String reason : new String[]{"permission", "preference", "tool", "denied", "cancelled", "unchanged", "failed"}) {
+            Restoration f = new Restoration(); f.material = farm ? Material.FARMLAND : Material.DIRT_PATH;
+            f.tool.setType(farm ? Material.IRON_HOE : Material.IRON_SHOVEL);
+            f.durability.publish(new ToolDurability.Settings(true, true, true, true));
+            if (reason.equals("permission")) f.permitted = false;
+            if (reason.equals("preference")) {
+                if(farm) PlayerDataManager.getInstance().setFarmBack(f.player, false);
+                else PlayerDataManager.getInstance().setPathBack(f.player, false);
+            }
+            if(reason.equals("tool")) f.tool.setType(Material.IRON_PICKAXE);
+            if(reason.equals("unchanged")) f.ignoreWrite = true;
+            if(reason.equals("failed")) f.failWrite = true;
+            var event = f.click();
+            if(reason.equals("denied")) event.setUseItemInHand(Event.Result.DENY);
+            if(reason.equals("cancelled")) event.setCancelled(true);
+            if(f.failWrite) assertThrows(IllegalStateException.class, () -> f.listener.onBlockClick(event));
+            else f.listener.onBlockClick(event);
+            assertEquals(0, f.tool.damage, (farm ? "farm " : "path ") + reason);
+        }
+    }
+    @Test void existingReloadCommandPublishesAllSettingsWithoutUpdateChecker() {
+        Restoration f = new Restoration();
+        YamlConfiguration config = new YamlConfiguration();
+        for (String feature : new String[]{"barkback", "pathback", "farmback", "copperback"}) config.set("tool-durability." + feature, true);
+        List<String> calls = new ArrayList<>();
+        CommandManager commands = new CommandManager(PlayerDataManager::getInstance,
+                () -> Blockback.reloadSharedConfig(() -> calls.add("reload"), () -> config, f.durability,
+                        calls::add, () -> calls.add("optional-update")));
+        assertTrue(commands.onCommand(f.player, command("blockback"), "blockback", new String[]{"reload"}));
+        assertEquals(List.of("reload", "optional-update"), calls);
+        assertEquals(new ToolDurability.Settings(true, true, true, true), f.durability.settings());
+        f.listener.onBlockClick(f.click()); assertEquals(1, f.tool.damage);
+        for (String feature : new String[]{"barkback", "pathback", "farmback", "copperback"}) config.set("tool-durability." + feature, false);
+        commands.onCommand(f.player, command("blockback"), "blockback", new String[]{"reload"});
+        assertEquals(ToolDurability.Settings.DISABLED, f.durability.settings());
+        f.material = Material.STRIPPED_OAK_LOG; f.listener.onBlockClick(f.click()); assertEquals(1, f.tool.damage);
+        f.permitted = false; calls.clear();
+        commands.onCommand(f.player, command("blockback"), "blockback", new String[]{"reload"});
+        assertTrue(calls.isEmpty());
+    }
     static final class CopperFixture {
         final Restoration inventory = new Restoration();
         final FakeBlock block;
@@ -281,7 +374,7 @@ class ToolDurabilityTest {
         ItemStack main = tool, off = new Tool(Material.IRON_AXE);
         EquipmentSlot hand = EquipmentSlot.HAND;
         int slot;
-        boolean permitted = true, ignoreWrite, failWrite, failSound;
+        boolean permitted = true, ignoreWrite, failWrite, failSound, sneaking = true;
         final List<EntityEffect> effects = new ArrayList<>();
         GameMode mode = GameMode.SURVIVAL;
         final UUID uuid = UUID.randomUUID();
@@ -299,7 +392,7 @@ class ToolDurabilityTest {
             case "hasPermission" -> permitted;
             case "getUniqueId" -> uuid;
             case "getName" -> "DurabilityTester";
-            case "isSneaking" -> true;
+            case "isSneaking" -> sneaking;
             case "playEffect" -> {effects.add((EntityEffect)a[0]); yield null;}
             case "playSound" -> {if(failSound) throw new IllegalStateException("sound failed"); yield null;}
             default -> defaultValue(m.getReturnType());

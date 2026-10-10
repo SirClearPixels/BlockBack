@@ -80,7 +80,10 @@ public class EventListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onCopperBlockClick(PlayerInteractEvent event) {
-        copperBack.handle(event);
+        ItemStack operated = event.getItem();
+        if (copperBack.handle(event) == CopperBack.Result.CHANGED) {
+            toolDurability.charge(event.getPlayer(), event.getHand(), operated, ToolDurability.Feature.COPPERBACK);
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -225,14 +228,7 @@ public class EventListener implements Listener {
                 toolDurability.charge(player, e.getHand(), item, ToolDurability.Feature.BARKBACK);
 
                 // Sound failure must not undo the completed action or its durability use.
-                SoundConfig.SoundSettings soundSettings = soundConfig.getBarkBackSettings();
-                try { if (soundSettings.enabled) {
-                    player.playSound(player.getLocation(),
-                            soundSettings.sound,
-                            soundSettings.category,
-                            soundSettings.volume,
-                            soundSettings.pitch);
-                } } catch (RuntimeException failure) { plugin.getLogger().warning("Could not play BarkBack sound."); }
+                playSound(player, soundConfig.getBarkBackSettings(), "BarkBack");
                 return;
             }
         }
@@ -247,18 +243,13 @@ public class EventListener implements Listener {
 
             FoliaCompat.assertOwnedByCurrentRegion(block, plugin);
             block.setType(Material.DIRT);
-
-            // Play configurable sound
-            SoundConfig.SoundSettings soundSettings = soundConfig.getPathBackSettings();
-            if (soundSettings.enabled) {
-                player.playSound(player.getLocation(),
-                        soundSettings.sound,
-                        soundSettings.category,
-                        soundSettings.volume,
-                        soundSettings.pitch);
-            }
+            if (block.getType() != Material.DIRT) return;
             pathbackCount.incrementAndGet();
             e.setCancelled(true);
+            toolDurability.charge(player, e.getHand(), item, ToolDurability.Feature.PATHBACK);
+
+            // Play configurable sound
+            playSound(player, soundConfig.getPathBackSettings(), "PathBack");
             return;
         }
 
@@ -272,21 +263,25 @@ public class EventListener implements Listener {
 
             FoliaCompat.assertOwnedByCurrentRegion(block, plugin);
             block.setType(Material.DIRT);
-
-            // Play configurable sound
-            SoundConfig.SoundSettings soundSettings = soundConfig.getFarmBackSettings();
-            if (soundSettings.enabled) {
-                player.playSound(player.getLocation(),
-                        soundSettings.sound,
-                        soundSettings.category,
-                        soundSettings.volume,
-                        soundSettings.pitch);
-            }
+            if (block.getType() != Material.DIRT) return;
             farmbackCount.incrementAndGet();
             e.setCancelled(true);
+            toolDurability.charge(player, e.getHand(), item, ToolDurability.Feature.FARMBACK);
+
+            // Play configurable sound
+            playSound(player, soundConfig.getFarmBackSettings(), "FarmBack");
             return;
         }
     }
+    private void playSound(Player player, SoundConfig.SoundSettings settings, String feature) {
+        if (!settings.enabled) return;
+        try {
+            player.playSound(player.getLocation(), settings.sound, settings.category, settings.volume, settings.pitch);
+        } catch (RuntimeException failure) {
+            plugin.getLogger().warning("Could not play " + feature + " sound.");
+        }
+    }
+
     /**
      * Helper to preserve the axis of logs/hyphae-like blocks after changing type.
      */

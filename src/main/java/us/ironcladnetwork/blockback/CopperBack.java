@@ -95,7 +95,10 @@ final class CopperBack {
         Material next = NEXT.get(block.getType());
         if (next == null) return Result.CONSUMED;
         Result result = convert(block, next);
-        if (result == Result.CHANGED) changed.accept(player);
+        if (result == Result.CHANGED) {
+            try { changed.accept(player); }
+            catch (RuntimeException failure) { plugin.getLogger().warning("Could not play CopperBack sound."); }
+        }
         return result;
     }
 
