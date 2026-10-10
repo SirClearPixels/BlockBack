@@ -5,6 +5,7 @@ import org.bukkit.SoundCategory;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.plugin.Plugin;
 
 import java.io.File;
 import java.io.IOException;
@@ -16,7 +17,7 @@ import java.io.IOException;
 public class SoundConfig {
     
     private static volatile SoundConfig instance;
-    private final JavaPlugin plugin;
+    private final Plugin plugin;
     private final File configFile;
     private FileConfiguration config;
     
@@ -27,6 +28,7 @@ public class SoundConfig {
     private volatile SoundSettings barkBackSettings;
     private volatile SoundSettings pathBackSettings;
     private volatile SoundSettings farmBackSettings;
+    private volatile SoundSettings copperBackSettings;
     
     /**
      * Represents sound configuration for a specific feature
@@ -63,7 +65,7 @@ public class SoundConfig {
         return instance;
     }
     
-    private SoundConfig(JavaPlugin plugin) {
+    SoundConfig(Plugin plugin) {
         this.plugin = plugin;
         File dataFolder = plugin.getDataFolder();
         if (!dataFolder.exists()) {
@@ -114,6 +116,12 @@ public class SoundConfig {
             config.set("farmback.volume", 1.0);
             config.set("farmback.pitch", 1.0);
             config.set("farmback.enabled", true);
+
+            config.set("copperback.sound", "ITEM_AXE_SCRAPE");
+            config.set("copperback.category", "BLOCKS");
+            config.set("copperback.volume", 1.0);
+            config.set("copperback.pitch", 1.0);
+            config.set("copperback.enabled", true);
             
             // Add configuration header comments
             config.options().setHeader(java.util.Arrays.asList(
@@ -139,6 +147,30 @@ public class SoundConfig {
      * Load sound settings from configuration
      */
     private void loadSoundSettings() {
+        // Existing files use defaults for missing copper keys and retain every saved value.
+        try {
+            Sound sound;
+            SoundCategory category;
+            try {
+                sound = Sound.valueOf(config.getString("copperback.sound", "ITEM_AXE_SCRAPE"));
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Invalid CopperBack sound, using ITEM_AXE_SCRAPE");
+                sound = Sound.ITEM_AXE_SCRAPE;
+            }
+            try {
+                category = SoundCategory.valueOf(config.getString("copperback.category", "BLOCKS"));
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Invalid CopperBack sound category, using BLOCKS");
+                category = SoundCategory.BLOCKS;
+            }
+            copperBackSettings = new SoundSettings(sound, category,
+                    validateVolume(config.getDouble("copperback.volume", 1.0), "CopperBack"),
+                    validatePitch(config.getDouble("copperback.pitch", 1.0), "CopperBack"),
+                    config.getBoolean("copperback.enabled", true));
+        } catch (Exception e) {
+            plugin.getLogger().severe("Failed to load CopperBack sound settings: " + e.getMessage());
+            copperBackSettings = new SoundSettings(Sound.ITEM_AXE_SCRAPE, SoundCategory.BLOCKS, 1.0f, 1.0f, true);
+        }
         // Load BarkBack settings
         try {
             String soundName = config.getString("barkback.sound", "ITEM_AXE_STRIP");
@@ -273,6 +305,10 @@ public class SoundConfig {
      */
     public SoundSettings getFarmBackSettings() {
         return farmBackSettings;
+    }
+
+    public SoundSettings getCopperBackSettings() {
+        return copperBackSettings;
     }
     
     /**

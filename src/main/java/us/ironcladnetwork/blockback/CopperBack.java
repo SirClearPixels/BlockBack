@@ -3,8 +3,12 @@ package us.ironcladnetwork.blockback;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.Bisected;
+import org.bukkit.block.data.type.Chest;
+import org.bukkit.block.data.type.Door;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
@@ -17,6 +21,8 @@ import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -29,12 +35,23 @@ final class CopperBack {
     private static final Set<Material> COPPER = EnumSet.noneOf(Material.class);
 
     static {
-        Material[] stages = {Material.COPPER_BLOCK, Material.EXPOSED_COPPER,
-                Material.WEATHERED_COPPER, Material.OXIDIZED_COPPER};
+        for (Material exposed : Material.values()) {
+            if (!exposed.name().startsWith("EXPOSED_") || !exposed.isBlock()) continue;
+            String base = exposed.name().substring("EXPOSED_".length());
+            // Copper block has a legacy base name; lightning rods have no COPPER token.
+            if (!base.contains("COPPER") && !base.equals("LIGHTNING_ROD")) continue;
+            addFamily(base.equals("COPPER") ? "COPPER_BLOCK" : base, exposed,
+                    Material.getMaterial("WEATHERED_" + base), Material.getMaterial("OXIDIZED_" + base));
+        }
+    }
+
+    private static void addFamily(String base, Material exposed, Material weathered, Material oxidized) {
+        Material[] stages = {Material.getMaterial(base), exposed, weathered, oxidized};
+        for (Material stage : stages) if (stage == null || !stage.isBlock()) return;
         for (int i = 0; i < stages.length; i++) {
             COPPER.add(stages[i]);
             Material waxed = Material.getMaterial("WAXED_" + stages[i].name());
-            if (waxed != null) COPPER.add(waxed);
+            if (waxed != null && waxed.isBlock()) COPPER.add(waxed);
             if (i < stages.length - 1) NEXT.put(stages[i], stages[i + 1]);
         }
     }
@@ -48,7 +65,7 @@ final class CopperBack {
         this(plugin, player -> {
             PlayerDataManager settings = PlayerDataManager.getInstance();
             return settings != null && settings.isCopperBackEnabled(player);
-        }, Bukkit::createBlockData, player -> { });
+        }, Bukkit::createBlockData, CopperBack::playSound);
     }
 
     // Narrow API boundaries allow behavioral tests without booting a Minecraft server.
@@ -91,35 +108,111 @@ final class CopperBack {
     }
 
     private Result convert(Block block, Material next) {
-        BlockState original = null;
-        boolean attempted = false;
+        List<BlockState> originals = new ArrayList<>(2);
+        List<BlockState> replacements = new ArrayList<>(2);
+        int attempted = 0;
         try {
-            original = block.getState();
-            BlockState replacement = block.getState();
-            replacement.setBlockData(replacementData(original.getBlockData(), next));
-            FoliaCompat.assertOwnedByCurrentRegion(block, plugin);
-            attempted = true;
-            if (!replacement.update(true, false)) throw new IllegalStateException("snapshot update rejected");
+            prepare(block, next, originals, replacements);
+            Block partner = pairedBlock(block, originals.getFirst().getBlockData());
+            if (partner != null) prepare(partner, next, originals, replacements);
+            for (BlockState replacement : replacements) {
+                FoliaCompat.assertOwnedByCurrentRegion(replacement.getBlock(), plugin);
+                attempted++;
+                if (!replacement.update(true, false)
+                        || !sameData(replacement.getBlock().getBlockData(), replacement.getBlockData())) {
+                    throw new IllegalStateException("snapshot update rejected or failed readback");
+                }
+            }
             return Result.CHANGED;
         } catch (RuntimeException failure) {
-            if (attempted && original != null) restore(original);
+            // A failed update may already have changed a block. Restore all attempted snapshots.
+            for (int i = attempted - 1; i >= 0; i--) restore(originals.get(i));
             plugin.getLogger().warning("CopperBack could not convert " + block.getType()
                     + ": " + failure.getMessage());
             return Result.FAILED;
         }
     }
 
+    private void prepare(Block block, Material next, List<BlockState> originals, List<BlockState> replacements) {
+        BlockState original = block.getState();
+        BlockState replacement = block.getState();
+        replacement.setBlockData(replacementData(original.getBlockData(), next));
+        originals.add(original);
+        replacements.add(replacement);
+    }
+
+    private Block pairedBlock(Block block, BlockData data) {
+        if (data instanceof Door door) {
+            Block partner = block.getRelative(door.getHalf() == Bisected.Half.BOTTOM ? BlockFace.UP : BlockFace.DOWN);
+            if (partner == null || partner.getType() != block.getType()
+                    || !(partner.getBlockData() instanceof Door other) || door.getHalf() == other.getHalf()
+                    || !doorProperties(data).equals(doorProperties(other))) {
+                throw new IllegalStateException("missing or mismatched copper door half");
+            }
+            return partner;
+        }
+        if (data instanceof Chest chest && chest.getType() != Chest.Type.SINGLE) {
+            BlockFace direction = chestPartnerDirection(chest);
+            // A paired chest can cross a chunk boundary. Never load a chunk to find its partner.
+            if (!block.getWorld().isChunkLoaded((block.getX() + direction.getModX()) >> 4,
+                    (block.getZ() + direction.getModZ()) >> 4)) {
+                throw new IllegalStateException("copper chest partner chunk is not loaded");
+            }
+            Block partner = block.getRelative(direction);
+            if (partner == null || partner.getType() != block.getType()
+                    || !(partner.getBlockData() instanceof Chest other)
+                    || other.getType() == Chest.Type.SINGLE || other.getType() == chest.getType()
+                    || other.getFacing() != chest.getFacing()) {
+                throw new IllegalStateException("missing or mismatched copper chest half");
+            }
+            return partner;
+        }
+        return null;
+    }
+
+    private static String doorProperties(BlockData data) {
+        return data.getAsString().replace("half=lower", "half=paired").replace("half=upper", "half=paired");
+    }
+
+    private static BlockFace chestPartnerDirection(Chest chest) {
+        BlockFace clockwise = switch (chest.getFacing()) {
+            case NORTH -> BlockFace.EAST;
+            case EAST -> BlockFace.SOUTH;
+            case SOUTH -> BlockFace.WEST;
+            case WEST -> BlockFace.NORTH;
+            default -> throw new IllegalArgumentException("invalid copper chest facing");
+        };
+        return chest.getType() == Chest.Type.LEFT ? clockwise : clockwise.getOppositeFace();
+    }
+
+    private static boolean sameData(BlockData first, BlockData second) {
+        return first.getAsString().equals(second.getAsString());
+    }
+
+    private static void playSound(Player player) {
+        SoundConfig config = SoundConfig.getInstance();
+        if (config == null) return;
+        SoundConfig.SoundSettings settings = config.getCopperBackSettings();
+        if (settings.enabled) player.playSound(player.getLocation(), settings.sound, settings.category,
+                settings.volume, settings.pitch);
+    }
+
     private BlockData replacementData(BlockData original, Material next) {
         String serialized = original.getAsString();
         int properties = serialized.indexOf('[');
         String suffix = properties < 0 ? "" : serialized.substring(properties);
-        return parse.apply(next.getKey().toString() + suffix);
+        BlockData parsed = parse.apply(next.getKey().toString() + suffix);
+        if (parsed.getMaterial() != next) throw new IllegalArgumentException("unexpected parsed material");
+        return parsed;
     }
 
     private void restore(BlockState original) {
         try {
             FoliaCompat.assertOwnedByCurrentRegion(original.getBlock(), plugin);
-            if (!original.update(true, false)) throw new IllegalStateException("rollback update rejected");
+            if (!original.update(true, false)
+                    || !sameData(original.getBlock().getBlockData(), original.getBlockData())) {
+                throw new IllegalStateException("rollback update rejected or failed readback");
+            }
         } catch (RuntimeException failure) {
             plugin.getLogger().severe("CopperBack rollback failed for " + original.getType()
                     + ": " + failure.getMessage() + ". Check this block before using it again.");

@@ -1,6 +1,11 @@
 package us.ironcladnetwork.blockback;
 
 import org.bukkit.Material;
+import org.bukkit.Bukkit;
+import org.bukkit.Server;
+import org.bukkit.Registry;
+import org.bukkit.UnsafeValues;
+import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -18,6 +23,10 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.io.TempDir;
+import java.nio.file.Path;
+import java.nio.file.Files;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
@@ -31,6 +40,57 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Real event objects and production handlers; block snapshots are API-contract fakes, not a server. */
 class CopperBackTest {
+    @Test void existingSoundFileKeepsSettingsAndLoadsCopperDefaults(@TempDir Path directory) throws Exception {
+        Path file = directory.resolve("sounds.yml");
+        Files.writeString(file, "barkback:\n  enabled: false\n  volume: 0.25\ncopperback:\n  enabled: false\n  volume: 0.4\n  pitch: 1.5\n");
+        String before = Files.readString(file);
+        SoundConfig sounds = new SoundConfig(filePlugin(directory));
+        assertFalse(sounds.getBarkBackSettings().enabled);
+        assertEquals(0.25f, sounds.getBarkBackSettings().volume);
+        assertFalse(sounds.getCopperBackSettings().enabled);
+        assertEquals(0.4f, sounds.getCopperBackSettings().volume);
+        assertEquals(1.5f, sounds.getCopperBackSettings().pitch);
+        assertEquals(before, Files.readString(file));
+        Files.writeString(file, "barkback:\n  enabled: false\n");
+        sounds.reloadConfig();
+        assertTrue(sounds.getCopperBackSettings().enabled);
+        assertNotNull(sounds.getCopperBackSettings().sound);
+        assertFalse(sounds.getBarkBackSettings().enabled);
+        Path fresh = directory.resolve("fresh");
+        SoundConfig defaults = new SoundConfig(filePlugin(fresh));
+        assertTrue(Files.readString(fresh.resolve("sounds.yml")).contains("copperback:"));
+        assertTrue(defaults.getCopperBackSettings().enabled);
+    }
+
+    static Plugin filePlugin(Path directory) {
+        return proxy(Plugin.class, (p, m, a) -> switch (m.getName()) {
+            case "getDataFolder" -> directory.toFile();
+            case "getLogger" -> Logger.getLogger("CopperBackTest");
+            case "getServer" -> Bukkit.getServer();
+            default -> defaultValue(m.getReturnType());
+        });
+    }
+
+    @BeforeAll static void installMinimalRegistry() {
+        // Recent Spigot Material.isBlock delegates to a server registry, even in the 1.21.1 cache.
+        // This supplies only API objects, not Minecraft block parsing or world behavior.
+        Bukkit.setServer(proxy(Server.class, (p, m, a) -> switch (m.getName()) {
+            case "getLogger" -> Logger.getLogger("CopperBackTest");
+            case "getName", "getVersion", "getBukkitVersion" -> "CopperBack API-contract fake";
+            case "getUnsafe" -> proxy(UnsafeValues.class, (unsafe, method, args) ->
+                    method.getName().equals("get") ? ((Registry<?>) args[0]).get((NamespacedKey) args[1])
+                            : defaultValue(method.getReturnType()));
+            case "getRegistry" -> proxy(Registry.class, (r, method, args) -> {
+                if (!method.getName().equals("get")) return defaultValue(method.getReturnType());
+                Class<?> entryType = (Class<?>) a[0];
+                if (!entryType.isInterface()) return null;
+                return proxy(entryType, (entry, entryMethod, entryArgs) ->
+                        entryMethod.getName().equals("getKey") ? args[0] : defaultValue(entryMethod.getReturnType()));
+            });
+            default -> defaultValue(m.getReturnType());
+        }));
+    }
+
     @Test void allIndependentExpectedFamiliesAdvanceThreeTimesAndStop() {
         String[] bases = {"COPPER_BLOCK", "CUT_COPPER", "CHISELED_COPPER", "COPPER_GRATE", "COPPER_BULB",
                 "CUT_COPPER_SLAB", "CUT_COPPER_STAIRS", "COPPER_TRAPDOOR", "COPPER_DOOR", "COPPER_CHEST",

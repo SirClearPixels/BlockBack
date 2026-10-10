@@ -18,6 +18,7 @@ BlockBack is a feature-rich Minecraft plugin that enhances your gameplay by allo
 - **BarkBack**: Restore bark on stripped logs by right-clicking with an axe
 - **PathBack**: Convert path blocks back to dirt by right-clicking with a shovel  
 - **FarmBack**: Revert farmland to dirt by right-clicking with a hoe
+- **CopperBack**: Advance copper oxidation one stage with sneak + right-click using an axe (permission and player toggle default off)
 
 ### New in Version 1.2.0
 - **Individual Feature Toggles**: Players can enable/disable each feature independently
@@ -40,11 +41,20 @@ BlockBack is a feature-rich Minecraft plugin that enhances your gameplay by allo
 - **Restore Paths**: Right-click path blocks while holding a shovel
 - **Un-Till Farmland**: Right-click farmland while holding a hoe
 
+### CopperBack
+
+Grant `blockback.copper` using your permission plugin, then have the player run `/copperback` to enable it. Both the permission and player preference default to off.
+
+Sneak + right-click with an axe advances unwaxed copper one oxidation stage. Fully oxidized copper stops there; waxed copper stays waxed. These enabled sneak gestures consume the axe action even when nothing changes. Ordinary right-click retains vanilla scraping, unwaxing and statue revival. Disable `/copperback` to restore vanilla sneak interactions too.
+
+All complete copper oxidation families available on the running server are recognized, including newer chests, bars, chains, lanterns, golem statues and lightning rods when present. Doors and double copper chests update their matching halves together. Main-hand axes take priority over an offhand axe; an offhand axe works when the main hand has no axe. Denied block or item interactions are left unchanged.
+
 ### Commands
 - `/blockback` - View the status of all your BlockBack features
 - `/barkback` - Toggle BarkBack feature on/off for yourself
 - `/pathback` - Toggle PathBack feature on/off for yourself
 - `/farmback` - Toggle FarmBack feature on/off for yourself
+- `/copperback` - Toggle CopperBack feature on/off for yourself (requires `blockback.copper`)
 - `/blockback reload` - Reload configuration files (requires permission)
 
 ## Configuration
@@ -52,31 +62,39 @@ BlockBack is a feature-rich Minecraft plugin that enhances your gameplay by allo
 ### sounds.yml
 Customize sound effects for each feature:
 ```yaml
-bark-back:
+barkback:
   enabled: true
   sound: ITEM_AXE_STRIP
   volume: 1.0
   pitch: 1.0
   category: BLOCKS
 
-path-back:
+pathback:
   enabled: true
   sound: ITEM_SHOVEL_FLATTEN
   volume: 1.0
   pitch: 1.0
   category: BLOCKS
 
-farm-back:
+farmback:
   enabled: true
   sound: ITEM_HOE_TILL
   volume: 1.0
   pitch: 1.0
   category: BLOCKS
+copperback:
+  enabled: true
+  sound: ITEM_AXE_SCRAPE
+  volume: 1.0
+  pitch: 1.0
+  category: BLOCKS
 ```
+
+The `copperback` section defaults to these values when absent from an existing file. CopperBack plays its sound only after a successful stage change.
 
 ### Player Data
 Player preferences are automatically saved in `players.yml` and include:
-- Individual feature toggles (BarkBack, PathBack, FarmBack)
+- Individual feature toggles (BarkBack, PathBack, FarmBack, CopperBack)
 - Settings persist across server restarts
 - Automatic backup system maintains data integrity
 
@@ -88,6 +106,7 @@ Player preferences are automatically saved in `players.yml` and include:
 | `blockback.bark` | Use BarkBack feature | All players |
 | `blockback.path` | Use PathBack feature | All players |
 | `blockback.farm` | Use FarmBack feature | All players |
+| `blockback.copper` | Enable and use CopperBack | Nobody; grant explicitly |
 | `blockback.reload` | Reload configuration | Operators |
 
 ## Compatibility
