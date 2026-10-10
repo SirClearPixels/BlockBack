@@ -199,6 +199,48 @@ class ToolDurabilityTest {
         ToolDurability wear = new ToolDurability(() -> 0, dispatch);
         wear.publish(new ToolDurability.Settings(true, true, true, true)); return wear;
     }
+    @Test void pathAndFarmChargeOnlyTheirMatchingSwitchAndActualHand() {
+        for (boolean farm : new boolean[]{false, true}) for (EquipmentSlot hand : new EquipmentSlot[]{EquipmentSlot.HAND, EquipmentSlot.OFF_HAND}) {
+            Restoration f = new Restoration(); f.material = farm ? Material.FARMLAND : Material.DIRT_PATH;
+            f.tool.setType(farm ? Material.IRON_HOE : Material.IRON_SHOVEL); f.hand = hand;
+            if (hand == EquipmentSlot.OFF_HAND) {f.off = f.tool; f.main = new Tool(Material.IRON_AXE);}
+            ItemStack other = hand == EquipmentSlot.HAND ? f.off : f.main;
+            f.durability.publish(new ToolDurability.Settings(true, !farm, farm, true));
+            f.listener.onBlockClick(f.click());
+            assertEquals(Material.DIRT, f.material); assertEquals(1, f.tool.damage);
+            assertSame(other, hand == EquipmentSlot.HAND ? f.off : f.main);
+            f.material = farm ? Material.FARMLAND : Material.DIRT_PATH;
+            f.durability.publish(new ToolDurability.Settings(true, farm, !farm, true));
+            f.listener.onBlockClick(f.click()); assertEquals(1, f.tool.damage);
+        }
+    }
+    @Test void copperChangedDoorPairCostsOnceAndRollbacksCostNothing() {
+        for (boolean failed : new boolean[]{false, true}) {
+            CopperFixture f = new CopperFixture("COPPER_DOOR", "[facing=north,half=lower,hinge=left,open=true,powered=false]");
+            f.block.partner = new FakeBlock(f.block.serialized.replace("lower", "upper"));
+            f.block.partner.failNextUpdate = failed;
+            f.listener.onCopperBlockClick(f.click(Action.LEFT_CLICK_BLOCK, EquipmentSlot.HAND));
+            assertEquals(failed ? Material.COPPER_DOOR : Material.EXPOSED_COPPER_DOOR, f.block.type());
+            assertEquals(failed ? Material.COPPER_DOOR : Material.EXPOSED_COPPER_DOOR, f.block.partner.type());
+            assertEquals(failed ? 0 : 1, f.inventory.tool.damage);
+        }
+    }
+    static final class CopperFixture {
+        final Restoration inventory = new Restoration();
+        final FakeBlock block;
+        final EventListener listener;
+        boolean enabled = true;
+        CopperFixture(String material, String properties) {
+            block = new FakeBlock("minecraft:" + material.toLowerCase(Locale.ROOT) + properties);
+            var plugin = filePlugin(Path.of("target"));
+            CopperBack copper = new CopperBack(plugin, player -> enabled, CopperBackTest::data, player -> {});
+            inventory.durability.publish(new ToolDurability.Settings(true, true, true, true));
+            listener = new EventListener(plugin, copper, inventory.durability);
+        }
+        PlayerInteractEvent click(Action action, EquipmentSlot hand) {
+            return new PlayerInteractEvent(inventory.player, action, inventory.tool, block.block, BlockFace.UP, hand);
+        }
+    }
     static final class Tool extends ItemStack {
         int damage, max = 100, unbreaking;
         boolean unbreakable;
@@ -257,6 +299,7 @@ class ToolDurabilityTest {
             case "hasPermission" -> permitted;
             case "getUniqueId" -> uuid;
             case "getName" -> "DurabilityTester";
+            case "isSneaking" -> true;
             case "playEffect" -> {effects.add((EntityEffect)a[0]); yield null;}
             case "playSound" -> {if(failSound) throw new IllegalStateException("sound failed"); yield null;}
             default -> defaultValue(m.getReturnType());
