@@ -4,8 +4,8 @@ milestone: v1.5.0
 milestone_name: Server-Owner Controls & CopperBack
 status: planning
 stopped_at: Phase 5 context gathered
-last_updated: "2026-10-10T04:51:01Z"
-last_activity: 2026-10-09
+last_updated: "2026-10-10T17:12:13Z"
+last_activity: 2026-10-10
 progress:
   total_phases: 7
   completed_phases: 1
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-30)
 Phase: 5
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-09 - User accepted CopperBack sneak-left behavior on the test server and authorized the GitHub push and v1.5.0 tag; 23 automated tests passed on both APIs.
+Last activity: 2026-10-10 - Completed quick task 261010-gj4: published-release admin update notices added to 1.5.0; 35 tests pass on both APIs; real GitHub transport and Paper startup verified.
 
 Progress: [----------] 0% (0/7 phases complete)
 
@@ -38,6 +38,7 @@ Progress: [----------] 0% (0/7 phases complete)
 |------------|-----------------------|---------------------------------------------------------------|
 | 2026-05-02 | bstats-integration    | Wire bStats Metrics (plugin ID 31058) with 4 custom charts    |
 | 2026-10-09 | [261009-t73-copperback](./quick/261009-t73-add-copperback-oxidation-control-while-p/261009-t73-SUMMARY.md) | Main-hand sneak-left oxidation with all right-clicks vanilla; 23 tests pass on Spigot 1.21.1 and 26.3; user accepted the test-server gesture and authorized v1.5.0 release. |
+| 2026-10-10 | [261010-gj4-update-notices](./quick/261010-gj4-add-published-release-update-notificatio/261010-gj4-SUMMARY.md) | Startup/daily published-release checks, cached admin join notices and reloadable opt-out; code through `7dc7559`; 35 tests pass on both APIs; real transport and Paper startup pass; live admin-chat/Folia acceptance pending. |
 
 ## Accumulated Context
 
