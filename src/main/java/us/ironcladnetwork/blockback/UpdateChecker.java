@@ -3,6 +3,7 @@ package us.ironcladnetwork.blockback;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import net.md_5.bungee.api.ChatColor;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -100,7 +101,7 @@ final class UpdateChecker implements Listener, AutoCloseable {
     public synchronized void onJoin(PlayerJoinEvent event) {
         Offer offer = cached;
         if (offer != null && event.getPlayer().hasPermission("blockback.update")) {
-            event.getPlayer().sendMessage(offer.message());
+            event.getPlayer().sendMessage(offer.chatMessage());
         }
     }
 
@@ -120,8 +121,20 @@ final class UpdateChecker implements Listener, AutoCloseable {
         @Override default void close() { }
     }
     record Offer(String installed, String version, String url) {
+        private static final ChatColor BRAND = ChatColor.of("#35FF87");
+        private static final ChatColor TEXT = ChatColor.of("#B8F5CB");
+        private static final ChatColor ACCENT = ChatColor.of("#00D978");
+        private static final ChatColor MUTED = ChatColor.of("#91AF9B");
+
         String message() {
             return "[BlockBack] Update available: " + installed + " -> " + version + ". " + url;
+        }
+
+        String chatMessage() {
+            return BRAND.toString() + ChatColor.BOLD + "[BlockBack] "
+                    + TEXT + "Update available: " + MUTED + installed
+                    + TEXT + " -> " + BRAND + ChatColor.BOLD + version
+                    + TEXT + ". " + ACCENT + url + ChatColor.RESET;
         }
     }
 

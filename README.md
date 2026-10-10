@@ -98,6 +98,8 @@ The `copperback` section defaults to these values when absent from an existing f
 
 BlockBack checks published stable GitHub releases asynchronously at startup and every 24 hours. When a newer release is found, the console receives one notice per version, and players with `blockback.update` receive the installed version, available version and release link when they join. This permission defaults to operators and respects explicit grants and denials.
 
+In-game notices use the logo-inspired green palette: bold emerald (`#35FF87`) for the BlockBack prefix and new version, soft mint (`#B8F5CB`) for the message, muted sage (`#91AF9B`) for the installed version, and green (`#00D978`) for the release link. Console notices remain plain text.
+
 ```yaml
 update-checker:
   enabled: true

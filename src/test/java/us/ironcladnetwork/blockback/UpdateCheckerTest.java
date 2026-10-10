@@ -47,6 +47,10 @@ class UpdateCheckerTest {
             assertTrue(messages.getFirst().contains("1.6.0"));
             assertTrue(messages.getFirst().contains("https://github.com/SirClearPixels/BlockBack/releases/tag/v1.6.0"));
             assertFalse(messages.getFirst().contains("evil"));
+            assertEquals(logs.getFirst(), org.bukkit.ChatColor.stripColor(messages.getFirst()));
+            assertTrue(messages.getFirst().contains("\u00a7x"), "Player notice uses RGB colors");
+            assertTrue(messages.getFirst().endsWith("\u00a7r"), "Formatting ends with the notice");
+            assertFalse(logs.getFirst().contains("\u00a7"), "Console notice remains plain text");
             int beforeJoin = requests.get();
             checker.onJoin(new PlayerJoinEvent(player(false, messages), null));
             assertEquals(beforeJoin, requests.get());
