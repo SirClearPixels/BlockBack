@@ -7,6 +7,7 @@ import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Orientable;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -31,7 +32,7 @@ public class EventListener implements Listener {
             Material.WOODEN_AXE, Material.STONE_AXE, Material.GOLDEN_AXE,
             Material.IRON_AXE, Material.DIAMOND_AXE, Material.NETHERITE_AXE
     );
-    // COPPER_AXE was added in 1.21.2; resolved reflectively so the plugin still
+    // COPPER_AXE was added in 1.21.9; resolved by name so the plugin still
     // compiles against the 1.21.1 API jar and runs on older 1.21.x servers.
 
     private static final EnumSet<Material> SHOVELS = EnumSet.of(
@@ -47,6 +48,7 @@ public class EventListener implements Listener {
     private static final Map<Material, Material> STRIPPED_TO_UNSTRIPPED = new HashMap<>();
 
     private final Plugin plugin;
+    private final CopperBack copperBack;
 
     // bStats usage counters — incremented on each successful restoration.
     // Read via pollAndReset*Count(), which atomically returns the count and resets to 0.
@@ -56,7 +58,21 @@ public class EventListener implements Listener {
     private final AtomicLong farmbackCount = new AtomicLong();
 
     public EventListener(Plugin plugin) {
+        this(plugin, new CopperBack(plugin));
+    }
+
+    EventListener(Plugin plugin, CopperBack copperBack) {
         this.plugin = plugin;
+        this.copperBack = copperBack;
+    }
+
+    static boolean isAxe(Material material) {
+        return AXES.contains(material);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onCopperBlockClick(PlayerInteractEvent event) {
+        copperBack.handle(event);
     }
 
     public long pollAndResetBarkbackCount() {
@@ -97,7 +113,7 @@ public class EventListener implements Listener {
         STRIPPED_TO_UNSTRIPPED.put(Material.STRIPPED_WARPED_STEM, Material.WARPED_STEM);
         STRIPPED_TO_UNSTRIPPED.put(Material.STRIPPED_BAMBOO_BLOCK, Material.BAMBOO_BLOCK);
 
-        // 1.21.2+ — Copper Axe strips logs in vanilla; mirror that here.
+        // Copper Axe strips logs in vanilla; mirror that here when available.
         Material copperAxe = Material.getMaterial("COPPER_AXE");
         if (copperAxe != null) {
             AXES.add(copperAxe);

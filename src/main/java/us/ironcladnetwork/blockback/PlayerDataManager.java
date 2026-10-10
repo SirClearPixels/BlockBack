@@ -26,8 +26,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Manages persistent player settings for barkback, pathback, and farmback toggles.
- * Each player's data is stored in players.yml under their UUID. By default, all options are enabled.
+ * Manages persistent player settings for BlockBack toggles.
+ * Each player's data is stored in players.yml under their UUID. CopperBack defaults off.
  * Uses in-memory caching for improved performance.
  */
 public class PlayerDataManager {
@@ -39,6 +39,7 @@ public class PlayerDataManager {
         public volatile boolean barkback = true;
         public volatile boolean pathback = true;
         public volatile boolean farmback = true;
+        public volatile boolean copperback = false;
         public volatile String name;
         public volatile long lastAccessed;
         
@@ -48,10 +49,15 @@ public class PlayerDataManager {
         }
         
         public PlayerSettings(String name, boolean barkback, boolean pathback, boolean farmback) {
+            this(name, barkback, pathback, farmback, false);
+        }
+
+        public PlayerSettings(String name, boolean barkback, boolean pathback, boolean farmback, boolean copperback) {
             this.name = name;
             this.barkback = barkback;
             this.pathback = pathback;
             this.farmback = farmback;
+            this.copperback = copperback;
             this.lastAccessed = System.currentTimeMillis();
         }
         
@@ -132,6 +138,7 @@ public class PlayerDataManager {
         config.set(uuid + ".barkback", true);
         config.set(uuid + ".pathback", true);
         config.set(uuid + ".farmback", true);
+        config.set(uuid + ".copperback", false);
     }
     
     /**
@@ -298,11 +305,13 @@ public class PlayerDataManager {
             Object barkbackObj = config.get(uuid + ".barkback");
             Object pathbackObj = config.get(uuid + ".pathback");
             Object farmbackObj = config.get(uuid + ".farmback");
+            Object copperbackObj = config.get(uuid + ".copperback");
             
             // Validate and convert values
             boolean barkback = validateBooleanSetting(barkbackObj, true, "barkback", uuid);
             boolean pathback = validateBooleanSetting(pathbackObj, true, "pathback", uuid);
             boolean farmback = validateBooleanSetting(farmbackObj, true, "farmback", uuid);
+            boolean copperback = validateBooleanSetting(copperbackObj, false, "copperback", uuid);
             
             // Use current player name if stored name is invalid
             if (name == null || name.trim().isEmpty()) {
@@ -311,7 +320,7 @@ public class PlayerDataManager {
                 saveConfig();
             }
             
-            return new PlayerSettings(name, barkback, pathback, farmback);
+            return new PlayerSettings(name, barkback, pathback, farmback, copperback);
             
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to load settings for player " + uuid + ": " + e.getMessage());
@@ -430,6 +439,7 @@ public class PlayerDataManager {
                 case "barkback": return cached.barkback;
                 case "pathback": return cached.pathback;
                 case "farmback": return cached.farmback;
+                case "copperback": return cached.copperback;
                 default: return true;
             }
         }
@@ -446,6 +456,7 @@ public class PlayerDataManager {
                     case "barkback": return cached.barkback;
                     case "pathback": return cached.pathback;
                     case "farmback": return cached.farmback;
+                    case "copperback": return cached.copperback;
                     default: return true;
                 }
             }
@@ -480,6 +491,7 @@ public class PlayerDataManager {
             case "barkback": return settings.barkback;
             case "pathback": return settings.pathback;
             case "farmback": return settings.farmback;
+            case "copperback": return settings.copperback;
             default: return true;
         }
     }
@@ -522,6 +534,7 @@ public class PlayerDataManager {
             case "barkback": cached.barkback = enabled; break;
             case "pathback": cached.pathback = enabled; break;
             case "farmback": cached.farmback = enabled; break;
+            case "copperback": cached.copperback = enabled; break;
         }
         cached.name = player.getName();
     }
@@ -545,6 +558,14 @@ public class PlayerDataManager {
      */
     public boolean isFarmBackEnabled(Player player) {
         return getFeatureSetting(player, "farmback");
+    }
+
+    public boolean isCopperBackEnabled(Player player) {
+        return getFeatureSetting(player, "copperback");
+    }
+
+    public void setCopperBack(Player player, boolean enabled) {
+        setFeatureSetting(player, "copperback", enabled);
     }
 
     /**

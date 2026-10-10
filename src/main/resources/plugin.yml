@@ -29,6 +29,10 @@ commands:
     permission: blockback.use
 
 permissions:
+  blockback.copper:
+    default: false
+    description: Allows the player to enable CopperBack oxidation control.
+
   blockback.bark:
     default: true
     description: Allows the player to toggle barkback.
