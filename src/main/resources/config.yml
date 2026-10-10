@@ -1,0 +1,3 @@
+# Check published stable releases at startup and daily; notify admins when they join.
+update-checker:
+  enabled: true

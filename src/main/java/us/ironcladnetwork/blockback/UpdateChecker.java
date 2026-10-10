@@ -57,14 +57,26 @@ final class UpdateChecker implements Listener, AutoCloseable {
     }
 
     synchronized void start() {
-        if (closed || task != null) return;
-        long active = ++generation;
-        task = executor.schedule(() -> check(active), 0, TimeUnit.SECONDS);
+        applyEnabled(true);
+    }
+
+    synchronized void applyEnabled(boolean enabled) {
+        if (closed) return;
+        if (enabled) {
+            if (task != null) return;
+            long active = ++generation;
+            task = executor.scheduleWithFixedDelay(() -> check(active), 0, 24, TimeUnit.HOURS);
+        } else {
+            ++generation;
+            cached = null;
+            if (task != null) task.cancel(true);
+            task = null;
+        }
     }
 
     void check(long active) {
         synchronized (this) {
-            if (closed || active != generation) return;
+            if (closed || task == null || active != generation) return;
         }
         Offer result = null;
         try {
@@ -78,14 +90,14 @@ final class UpdateChecker implements Listener, AutoCloseable {
             logger.fine("BlockBack update check unavailable (" + exception.getClass().getSimpleName() + ").");
         }
         synchronized (this) {
-            if (closed || active != generation) return;
+            if (closed || task == null || active != generation) return;
             cached = result;
             if (result != null && announced.add(result.version())) logger.info(result.message());
         }
     }
 
     @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
+    public synchronized void onJoin(PlayerJoinEvent event) {
         Offer offer = cached;
         if (offer != null && event.getPlayer().hasPermission("blockback.update")) {
             event.getPlayer().sendMessage(offer.message());
@@ -172,12 +184,15 @@ final class UpdateChecker implements Listener, AutoCloseable {
             this.shutdown = shutdown;
         }
         public Response fetch() throws Exception {
+            long started = System.nanoTime();
             HttpRequest request = HttpRequest.newBuilder(ENDPOINT).timeout(BUDGET)
                     .header("User-Agent", "BlockBack-update-checker")
                     .header("Accept", "application/vnd.github+json").GET().build();
             CompletableFuture<HttpResponse<byte[]>> future = exchange.send(request, info -> new LimitedBody());
             try {
-                HttpResponse<byte[]> response = future.get(BUDGET.toMillis(), TimeUnit.MILLISECONDS);
+                long remaining = BUDGET.toNanos() - (System.nanoTime() - started);
+                if (remaining <= 0) throw new TimeoutException("Release request budget expired");
+                HttpResponse<byte[]> response = future.get(remaining, TimeUnit.NANOSECONDS);
                 return new Response(response.statusCode(), new String(response.body(), StandardCharsets.UTF_8));
             } finally {
                 // Also cancels the underlying HTTP exchange if timeout, interrupt or body failure occurs.

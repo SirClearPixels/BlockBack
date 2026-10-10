@@ -80,7 +80,7 @@ public final class Blockback extends JavaPlugin {
         // Create one instance of CommandManager and register for all commands.
         CommandManager commandManager;
         try {
-            commandManager = new CommandManager();
+            commandManager = new CommandManager(PlayerDataManager::getInstance, this::reloadUpdateConfig);
         } catch (Exception e) {
             getLogger().severe("Failed to create CommandManager: " + e.getMessage());
             e.printStackTrace();
@@ -124,9 +124,10 @@ public final class Blockback extends JavaPlugin {
 
         // Release checks are optional; discovery failure must not disable gameplay.
         try {
+            saveDefaultConfig();
             updateChecker = new UpdateChecker(getDescription().getVersion(), getLogger());
             Bukkit.getPluginManager().registerEvents(updateChecker, this);
-            updateChecker.start();
+            updateChecker.applyEnabled(updateChecksEnabled());
         } catch (Exception exception) {
             if (updateChecker != null) updateChecker.close();
             getLogger().warning("Could not initialize BlockBack update checks.");
@@ -134,6 +135,23 @@ public final class Blockback extends JavaPlugin {
 
         // Log successful load
         getLogger().info("BlockBack has loaded successfully!");
+    }
+
+    private boolean updateChecksEnabled() {
+        Object setting = getConfig().get("update-checker.enabled");
+        if (setting == null) return true;
+        if (setting instanceof Boolean enabled) return enabled;
+        getLogger().warning("update-checker.enabled must be true or false; keeping update checks enabled.");
+        return true;
+    }
+
+    private void reloadUpdateConfig() {
+        try {
+            reloadConfig();
+            if (updateChecker != null) updateChecker.applyEnabled(updateChecksEnabled());
+        } catch (Exception exception) {
+            getLogger().warning("Could not reload BlockBack update-check configuration.");
+        }
     }
 
     /**

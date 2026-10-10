@@ -70,6 +70,9 @@ class UpdateCheckerTest {
                 release("v1.6.0").replace("\"draft\":false", "\"draft\":true"),
                 release("v1.6.0").replace("\"prerelease\":false", "\"prerelease\":true"),
                 release("v1.6.0").replace("\"draft\":false", "\"draft\":\"false\""),
+                release("v1.6.0").replace("\"draft\":false,", ""),
+                release("v1.6.0").replace("\"prerelease\":false,", ""),
+                release("v1.6.0").replace("\"published_at\":\"2026-10-10T01:00:00Z\",", ""),
                 release("v1.6.0").replace("2026-10-10T01:00:00Z", ""),
                 release("v1.6.0").replace("2026-10-10T01:00:00Z", "bad"),
                 release("v1.6.0").replace("\"tag_name\":\"v1.6.0\"", "\"tag_name\":123"))) {
@@ -218,7 +221,8 @@ class UpdateCheckerTest {
     @Test void httpBudgetIncludesStalledBodyAndCancelsExchange() {
         CompletableFuture<HttpResponse<byte[]>> stalled = new CompletableFuture<>() {
             @Override public HttpResponse<byte[]> get(long timeout, TimeUnit unit) throws TimeoutException {
-                assertEquals(10000, unit.toMillis(timeout));
+                assertTrue(timeout > 0);
+                assertTrue(unit.toNanos(timeout) <= UpdateChecker.BUDGET.toNanos());
                 throw new TimeoutException("body has not completed");
             }
         };
@@ -253,6 +257,65 @@ class UpdateCheckerTest {
             assertTrue(Thread.currentThread().isInterrupted());
             assertTrue(stalled.isCancelled());
         } finally { Thread.interrupted(); }
+    }
+
+    @Test void productionTransportWaitsForCompleteBodyAndReturnsStatus() throws Exception {
+        try (UpdateChecker.JdkTransport transport = new UpdateChecker.JdkTransport((request, handler) -> {
+            UpdateChecker.LimitedBody body = (UpdateChecker.LimitedBody) handler.apply(null);
+            body.onSubscribe(subscription(new AtomicInteger()));
+            byte[] json = release("v1.6.0").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            body.onNext(List.of(ByteBuffer.wrap(json)));
+            CompletableFuture<HttpResponse<byte[]>> response = body.getBody().toCompletableFuture().thenApply(bytes ->
+                    CopperBackTest.proxy(HttpResponse.class, (p, method, args) -> switch (method.getName()) {
+                        case "statusCode" -> 200;
+                        case "body" -> bytes;
+                        default -> CopperBackTest.defaultValue(method.getReturnType());
+                    }));
+            assertFalse(response.isDone());
+            body.onComplete();
+            return response;
+        }, () -> {})) {
+            UpdateChecker.Response response = transport.fetch();
+            assertEquals(200, response.status());
+            assertNotNull(UpdateChecker.offer("1.5.0", response.body()));
+        }
+    }
+
+    @Test void ownedWorkerFetchesOffCallerThreadAndNeverTouchesWaitingPlayer() throws Exception {
+        CountDownLatch logged = new CountDownLatch(1);
+        List<String> messages = new ArrayList<>();
+        Thread caller = Thread.currentThread();
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread thread = new Thread(r, "UpdateCheckerTest-worker");
+            thread.setDaemon(true);
+            return thread;
+        });
+        Logger logger = logger(new ArrayList<>());
+        logger.addHandler(new Handler() {
+            public void publish(LogRecord record) { logged.countDown(); }
+            public void flush() { }
+            public void close() { }
+        });
+        CountDownLatch entered = new CountDownLatch(1), allowed = new CountDownLatch(1);
+        try (UpdateChecker checker = new UpdateChecker("1.5.0", () -> {
+            assertNotSame(caller, Thread.currentThread());
+            entered.countDown();
+            assertTrue(allowed.await(2, TimeUnit.SECONDS));
+            return new UpdateChecker.Response(200, release("v1.6.0"));
+        }, scheduler, logger)) {
+            checker.start();
+            assertTrue(entered.await(2, TimeUnit.SECONDS));
+            checker.onJoin(new PlayerJoinEvent(player(true, messages), null));
+            assertTrue(messages.isEmpty());
+            allowed.countDown();
+            assertTrue(logged.await(2, TimeUnit.SECONDS));
+            assertTrue(messages.isEmpty());
+            checker.onJoin(new PlayerJoinEvent(player(true, messages), null));
+            assertEquals(1, messages.size());
+            checker.close();
+            checker.onJoin(new PlayerJoinEvent(player(true, messages), null));
+            assertEquals(1, messages.size());
+        } finally { allowed.countDown(); }
     }
 
     @Test void bundledResourcesRetainOpPermissionAndEnabledDefault() {

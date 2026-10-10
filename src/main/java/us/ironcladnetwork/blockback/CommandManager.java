@@ -18,13 +18,19 @@ import org.bukkit.entity.Player;
  */
 public class CommandManager implements CommandExecutor {
     private final java.util.function.Supplier<PlayerDataManager> playerDataSupplier;
+    private final Runnable reloadCallback;
 
     public CommandManager() {
         this(PlayerDataManager::getInstance);
     }
 
     CommandManager(java.util.function.Supplier<PlayerDataManager> playerDataSupplier) {
+        this(playerDataSupplier, () -> {});
+    }
+
+    CommandManager(java.util.function.Supplier<PlayerDataManager> playerDataSupplier, Runnable reloadCallback) {
         this.playerDataSupplier = playerDataSupplier;
+        this.reloadCallback = reloadCallback;
     }
 
     /**
@@ -111,6 +117,7 @@ public class CommandManager implements CommandExecutor {
                 }
                 soundConfig.reloadConfig();
                 playerData.reloadConfig();
+                reloadCallback.run();
                 
                 player.sendMessage(ChatColor.GREEN + "BlockBack configuration reloaded successfully!");
                 return true;
