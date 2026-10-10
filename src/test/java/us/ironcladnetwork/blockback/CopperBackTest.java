@@ -21,6 +21,10 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandSender;
+import org.bukkit.scheduler.BukkitScheduler;
+import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeAll;
@@ -33,6 +37,8 @@ import java.lang.reflect.Proxy;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 
@@ -40,6 +46,112 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Real event objects and production handlers; block snapshots are API-contract fakes, not a server. */
 class CopperBackTest {
+    @Test void commandPermissionToggleAndStatusUseDurablePlayerPreferences(@TempDir Path directory) throws Exception {
+        Fixture f = new Fixture("COPPER_BLOCK");
+        PlayerDataManager settings = new PlayerDataManager(filePlugin(directory), false);
+        CommandManager commands = new CommandManager(() -> settings);
+        f.permitted = false;
+        assertTrue(commands.onCommand(f.player, command("copperback"), "copperback", new String[0]));
+        assertFalse(settings.isCopperBackEnabled(f.player));
+        assertTrue(f.messages.stream().anyMatch(message -> message.contains("do not have permission")));
+        f.permitted = true;
+        commands.onCommand(f.player, command("copperback"), "copperback", new String[0]);
+        assertTrue(settings.isCopperBackEnabled(f.player));
+        commands.onCommand(f.player, command("blockback"), "blockback", new String[0]);
+        assertTrue(f.messages.stream().anyMatch(message -> message.contains("CopperBack:") && message.contains("Enabled")));
+        assertTrue(f.messages.stream().anyMatch(message -> message.contains("/copperback")));
+        settings.reloadConfig();
+        assertTrue(settings.isCopperBackEnabled(f.player));
+        commands.onCommand(f.player, command("copperback"), "copperback", new String[0]);
+        settings.removeFromCache(f.player);
+        assertFalse(settings.isCopperBackEnabled(f.player));
+        assertFalse(new PlayerDataManager(filePlugin(directory), false).isCopperBackEnabled(f.player));
+    }
+
+    @Test void oldAndNewYamlAndCacheMissesPreserveEveryFeature(@TempDir Path directory) throws Exception {
+        Fixture f = new Fixture("COPPER_BLOCK");
+        Path file = directory.resolve("players.yml");
+        for (String copper : new String[]{"", "  copperback: false\n", "  copperback: true\n"}) {
+            Files.writeString(file, f.uuid + ":\n  name: CopperTester\n  barkback: false\n  pathback: true\n  farmback: false\n" + copper);
+            PlayerDataManager settings = new PlayerDataManager(filePlugin(directory), false);
+            assertEquals(copper.contains("true"), settings.isCopperBackEnabled(f.player));
+            assertOldPreferences(settings, f.player);
+            settings.clearCache();
+            // Direct setter after eviction must load other saved features, not recreate their defaults.
+            settings.setCopperBack(f.player, true);
+            assertOldPreferences(settings, f.player);
+            assertTrue(settings.isCopperBackEnabled(f.player));
+            settings.reloadConfig();
+            assertTrue(settings.isCopperBackEnabled(f.player));
+            assertOldPreferences(settings, f.player);
+            settings.setCopperBack(f.player, false);
+            settings.clearCache();
+            assertFalse(settings.isCopperBackEnabled(f.player));
+            assertOldPreferences(settings, f.player);
+            var emergency = PlayerDataManager.class.getDeclaredMethod("getEmergencyDefaults", Player.class);
+            emergency.setAccessible(true);
+            assertFalse(((PlayerDataManager.PlayerSettings) emergency.invoke(settings, f.player)).copperback);
+        }
+        Fixture fresh = new Fixture("COPPER_BLOCK");
+        PlayerDataManager settings = new PlayerDataManager(filePlugin(directory), false);
+        assertFalse(settings.isCopperBackEnabled(fresh.player));
+        assertFalse(org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(file.toFile()).getBoolean(fresh.uuid + ".copperback", true));
+    }
+
+    static void assertOldPreferences(PlayerDataManager settings, Player player) {
+        assertFalse(settings.isBarkBackEnabled(player));
+        assertTrue(settings.isPathBackEnabled(player));
+        assertFalse(settings.isFarmBackEnabled(player));
+    }
+
+    static Command command(String name) {
+        return new Command(name) {
+            @Override public boolean execute(CommandSender sender, String label, String[] args) { return false; }
+        };
+    }
+
+    @Test void eachHandCombinationAdvancesOncePerGestureUntilTerminal() {
+        for (String hands : new String[]{"main", "off", "both"}) {
+            Fixture f = new Fixture("COPPER_BLOCK");
+            if (hands.equals("off")) f.main = Material.STICK;
+            if (!hands.equals("main")) f.off = Material.IRON_AXE;
+            for (Material expected : new Material[]{Material.EXPOSED_COPPER, Material.WEATHERED_COPPER, Material.OXIDIZED_COPPER, Material.OXIDIZED_COPPER}) {
+                f.listener.onCopperBlockClick(f.click(EquipmentSlot.HAND));
+                PlayerInteractEvent offhand = f.click(EquipmentSlot.OFF_HAND);
+                f.listener.onCopperBlockClick(offhand);
+                assertEquals(expected, f.block.type(), hands);
+                if (!hands.equals("main")) assertConsumed(offhand);
+            }
+            assertEquals(3, f.block.writes, hands);
+            assertEquals(3, f.sounds.get(), hands);
+        }
+    }
+
+    @Test void ordinaryClicksLeaveBothHandsAndAllCopperVanillaActionsUntouched() {
+        for (String material : new String[]{"COPPER_BLOCK", "EXPOSED_COPPER", "WAXED_COPPER_BLOCK", "COPPER_CHEST", "OXIDIZED_COPPER_GOLEM_STATUE"}) {
+            if (Material.getMaterial(material) == null) continue;
+            Fixture f = new Fixture(material);
+            f.off = Material.IRON_AXE;
+            f.sneaking = false;
+            for (EquipmentSlot hand : new EquipmentSlot[]{EquipmentSlot.HAND, EquipmentSlot.OFF_HAND}) {
+                PlayerInteractEvent event = f.click(hand);
+                Event.Result blockUse = event.useInteractedBlock(), itemUse = event.useItemInHand();
+                f.listener.onCopperBlockClick(event);
+                assertEquals(blockUse, event.useInteractedBlock());
+                assertEquals(itemUse, event.useItemInHand());
+                assertEquals(0, f.block.writes);
+            }
+        }
+    }
+
+    @Test void successfulBooleanWithoutActualConversionIsNotSuccess() {
+        Fixture f = new Fixture("COPPER_BLOCK");
+        f.block.ignoreNextUpdate = true;
+        f.listener.onCopperBlockClick(f.click(EquipmentSlot.HAND));
+        assertEquals(Material.COPPER_BLOCK, f.block.type());
+        assertEquals(0, f.sounds.get());
+    }
+
     @Test void existingSoundFileKeepsSettingsAndLoadsCopperDefaults(@TempDir Path directory) throws Exception {
         Path file = directory.resolve("sounds.yml");
         Files.writeString(file, "barkback:\n  enabled: false\n  volume: 0.25\ncopperback:\n  enabled: false\n  volume: 0.4\n  pitch: 1.5\n");
@@ -80,6 +192,12 @@ class CopperBackTest {
             case "getUnsafe" -> proxy(UnsafeValues.class, (unsafe, method, args) ->
                     method.getName().equals("get") ? ((Registry<?>) args[0]).get((NamespacedKey) args[1])
                             : defaultValue(method.getReturnType()));
+            case "getScheduler" -> proxy(BukkitScheduler.class, (scheduler, method, args) -> {
+                if (method.getName().equals("runTaskAsynchronously")) ((Runnable) args[1]).run();
+                return method.getReturnType() == BukkitTask.class
+                        ? proxy(BukkitTask.class, (task, taskMethod, taskArgs) -> defaultValue(taskMethod.getReturnType()))
+                        : defaultValue(method.getReturnType());
+            });
             case "getRegistry" -> proxy(Registry.class, (r, method, args) -> {
                 if (!method.getName().equals("get")) return defaultValue(method.getReturnType());
                 Class<?> entryType = (Class<?>) a[0];
@@ -288,6 +406,7 @@ class CopperBackTest {
         Material main = Material.DIAMOND_AXE, off = Material.AIR;
         final UUID uuid = UUID.randomUUID();
         final AtomicInteger sounds = new AtomicInteger();
+        final List<String> messages = new ArrayList<>();
         final Plugin plugin = proxy(Plugin.class, (p, m, a) -> switch (m.getName()) {
             case "getLogger" -> Logger.getLogger("CopperBackTest");
             default -> defaultValue(m.getReturnType());
@@ -303,6 +422,7 @@ class CopperBackTest {
             case "getInventory" -> inventory;
             case "getUniqueId" -> uuid;
             case "getName" -> "CopperTester";
+            case "sendMessage" -> { if (a[0] instanceof String message) messages.add(message); yield null; }
             default -> defaultValue(m.getReturnType());
         });
         final EventListener listener;
@@ -327,6 +447,7 @@ class CopperBackTest {
         String serialized;
         int writes;
         boolean failNextUpdate;
+        boolean ignoreNextUpdate;
         Map<String, Object> tile = new HashMap<>();
         FakeBlock partner;
         final World world = proxy(World.class, (p, m, a) -> m.getName().equals("isChunkLoaded") ? true : defaultValue(m.getReturnType()));
@@ -353,6 +474,7 @@ class CopperBackTest {
                 case "update" -> {
                     assertArrayEquals(new Object[]{true, false}, a, "snapshot updates must force the new material and suppress physics");
                     writes++;
+                    if (ignoreNextUpdate) { ignoreNextUpdate = false; yield true; }
                     // Simulate material replacement losing tile data; the captured snapshot must reapply it.
                     serialized = captured[0];
                     tile.clear();
