@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.5.0] - 2026-10-09
 
 ### Added
+- **Optional tool durability**: Four independent false-by-default settings apply one normal tool use after a successful action, with Creative, Unbreaking, unbreakable items and Bukkit damage/break events respected. Paired copper changes cost once. Apply changes with `/blockback reload`; player toggles and permissions remain separate.
+
+  ```yaml
+  tool-durability:
+    barkback: false
+    pathback: false
+    farmback: false
+    copperback: false
+  ```
+
+  Missing keys keep actions free. Denied, failed, unchanged and ineligible actions cost nothing; normal Minecraft tool use, scraping, wax removal and mining keep vanilla wear.
 - **Admin update notices**: Asynchronous startup and daily checks for newer published stable GitHub releases, with cached join notices for `blockback.update` (default operators). Opt out through `config.yml` and `/blockback reload`; files are never installed automatically.
 - **CopperBack**: Sneak + left-click with a main-hand axe advances copper oxidation one stage. Waxed and fully oxidized copper consume the gesture unchanged. Offhand axes never activate CopperBack.
 - All right-clicks and sneak + right-clicks retain vanilla behavior, including scraping, wax removal, statue revival and copper block interactions. Left-clicking without sneaking breaks blocks normally.
@@ -16,12 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Behavioral regression coverage for oxidation, interaction denials, main-hand activation and offhand exclusion, paired blocks, snapshot handling, commands and saved preferences.
 
 ### Fixed
+- Completed restorations and copper changes retain their durability cost even if sound playback fails. Restoration handlers respect both interaction denial channels at protection-compatible priority.
 - Toggling a feature after player-cache eviction preserves the player's other saved preferences.
 
 ### Verification
 - The automated regression suite covers Spigot 1.21.1 and 26.3; the release retains Java 21 bytecode compatibility.
 - Live server acceptance remains pending for Folia, protection plugins, inventories and tile data.
 - Update-checker transport, timing, permissions, reload and shutdown are covered by deterministic tests; live join/reload/shutdown smoke checks remain separate.
+- Durability and production interaction handlers are covered by deterministic API-contract tests. Actual break feedback, Unbreaking, main/offhand operation, protected interactions and reload on Paper/Folia still need live acceptance. A block-only predictive denial is indistinguishable from protection denial and remains conservatively blocked.
 
 ## [1.4.1] - 2026-05-08
 

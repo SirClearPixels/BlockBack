@@ -109,6 +109,24 @@ Set `update-checker.enabled` to `false` in `plugins/BlockBack/config.yml` to sto
 
 The checker informs admins and never installs files. Older installed jars without this feature cannot receive these notifications retroactively; install 1.5.0 or later to enable discovery.
 
+### Optional tool durability
+
+Set these independent server settings in `plugins/BlockBack/config.yml`, then run `/blockback reload`:
+
+```yaml
+tool-durability:
+  barkback: false
+  pathback: false
+  farmback: false
+  copperback: false
+```
+
+All four default to `false`, including missing keys in existing installations. Set a feature to `true` to attempt one normal durability use on the tool that successfully performed its BlockBack action. Creative players and unbreakable tools are exempt; Unbreaking reduces wear normally. Bukkit item-damage events can cancel or adjust the damage, and item-break events are dispatched when a tool breaks. Paired copper doors or chests cost one use for the whole action. Sounds can be disabled without changing durability behavior.
+
+These controls are separate from player toggles and permissions. Ineligible, denied, unchanged or failed actions cost nothing. Normal Minecraft tool use, copper scraping, wax removal and mining retain vanilla durability behavior. CopperBack still requires sneak + left-click with a main-hand axe; restorations use the actual interaction hand.
+
+BlockBack respects either interaction result channel being denied. Bukkit does not identify the source of a block-only denial, so a predictively denied no-op is conservatively left unchanged along with protected interactions. Live Paper/Folia checks remain needed for protection plugins, actual break feedback, Unbreaking, both hands and reload; automated event-handler tests use API-contract fakes.
+
 ### Player Data
 Player preferences are automatically saved in `players.yml` and include:
 - Individual feature toggles (BarkBack, PathBack, FarmBack, CopperBack)
