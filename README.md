@@ -94,6 +94,19 @@ copperback:
 
 The `copperback` section defaults to these values when absent from an existing file. CopperBack plays its sound only after a successful stage change.
 
+### config.yml and update notices
+
+BlockBack checks published stable GitHub releases asynchronously at startup and every 24 hours. When a newer release is found, the console receives one notice per version, and players with `blockback.update` receive the installed version, available version and release link when they join. This permission defaults to operators and respects explicit grants and denials.
+
+```yaml
+update-checker:
+  enabled: true
+```
+
+Set `update-checker.enabled` to `false` in `plugins/BlockBack/config.yml` to stop checks and notices, then apply the change with `/blockback reload`. Re-enabling starts a fresh check. Joins use the latest completed check: an admin who joins before startup discovery finishes can receive the notice on a later join. Failed checks clear the cached notice until a successful check recovers.
+
+The checker informs admins and never installs files. Older installed jars without this feature cannot receive these notifications retroactively; install 1.5.0 or later to enable discovery.
+
 ### Player Data
 Player preferences are automatically saved in `players.yml` and include:
 - Individual feature toggles (BarkBack, PathBack, FarmBack, CopperBack)
@@ -110,6 +123,7 @@ Player preferences are automatically saved in `players.yml` and include:
 | `blockback.farm` | Use FarmBack feature | All players |
 | `blockback.copper` | Enable and use CopperBack | Nobody; grant explicitly |
 | `blockback.reload` | Reload configuration | Operators |
+| `blockback.update` | Receive published-release update notices on join | Operators |
 
 ## Compatibility
 

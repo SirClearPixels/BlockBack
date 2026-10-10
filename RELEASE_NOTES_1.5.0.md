@@ -7,6 +7,7 @@ CopperBack adds control over copper oxidation alongside BarkBack, PathBack and F
 - Supports all 15 current oxidation families when present on the server, including copper chests, statues, bars, chains, lanterns and lightning rods.
 - Includes persistent `/copperback` toggles, `/blockback` status and configurable `copperback` sounds.
 - Fixes other player preferences resetting when a feature is toggled after cache eviction.
+- Checks newer published stable GitHub releases at startup and daily. Operators and players granted `blockback.update` receive cached update notices on join; disable through `config.yml` and apply with `/blockback reload`. The checker never installs files, and older jars without it cannot notify retroactively.
 
 ## Enable CopperBack
 

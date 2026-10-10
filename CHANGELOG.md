@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.5.0] - 2026-10-09
 
 ### Added
+- **Admin update notices**: Asynchronous startup and daily checks for newer published stable GitHub releases, with cached join notices for `blockback.update` (default operators). Opt out through `config.yml` and `/blockback reload`; files are never installed automatically.
 - **CopperBack**: Sneak + left-click with a main-hand axe advances copper oxidation one stage. Waxed and fully oxidized copper consume the gesture unchanged. Offhand axes never activate CopperBack.
 - All right-clicks and sneak + right-clicks retain vanilla behavior, including scraping, wax removal, statue revival and copper block interactions. Left-clicking without sneaking breaks blocks normally.
 - Runtime support for all 15 current copper oxidation families, with block-state preservation and paired updates for doors and double copper chests.
@@ -20,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Verification
 - The automated regression suite covers Spigot 1.21.1 and 26.3; the release retains Java 21 bytecode compatibility.
 - Live server acceptance remains pending for Folia, protection plugins, inventories and tile data.
+- Update-checker transport, timing, permissions, reload and shutdown are covered by deterministic tests; live join/reload/shutdown smoke checks remain separate.
 
 ## [1.4.1] - 2026-05-08
 
