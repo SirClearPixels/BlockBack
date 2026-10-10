@@ -45,7 +45,7 @@ class UpdateCheckerTest {
             assertEquals(1, messages.size());
             assertTrue(messages.getFirst().contains("1.5.0"));
             assertTrue(messages.getFirst().contains("1.6.0"));
-            assertTrue(messages.getFirst().contains("https://github.com/SirClearPixels/BlockBack/releases/tag/v1.6.0"));
+            assertTrue(messages.getFirst().contains("https://modrinth.com/plugin/blockback"));
             assertFalse(messages.getFirst().contains("evil"));
             assertEquals(logs.getFirst(), org.bukkit.ChatColor.stripColor(messages.getFirst()));
             assertTrue(messages.getFirst().contains("\u00a7x"), "Player notice uses RGB colors");

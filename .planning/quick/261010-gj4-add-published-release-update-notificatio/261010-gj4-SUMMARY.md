@@ -83,6 +83,8 @@ status: complete
 
 ### Follow-up: logo-inspired RGB notices (2026-10-10)
 
+Subsequent user-requested link change: both console and chat notices now direct admins to `https://modrinth.com/plugin/blockback`; GitHub remains the version-discovery source. The HTML preview matches. All 35 tests passed on the Java 21 baseline after this URL-only change. Current JAR SHA256: `862FB5AAF2AC62A214727BA413E063CAC25C42BD6F6E63A1ECA79F02CA87B94C`, superseding the earlier branding artifact below.
+
 - Admin join notices now use bold emerald `#35FF87` for the prefix/new version, mint `#B8F5CB` for message text, sage `#91AF9B` for the installed version and green `#00D978` for the release URL. Console output stays plain text; chat formatting resets after the notice.
 - Extended the existing join-handler regression to verify RGB formatting, reset termination and content parity with plain console output. All 35 tests pass on both Spigot 26.3/Java 25 and the final Spigot 1.21.1/Java 21 build.
 - Latest artifact supersedes the earlier checksum below: `target/BlockBack-1.5.0.jar`, SHA256 `49136599C78108F136F507F10F15CD290136F5AC18189BAC759C53D4E4A81718`.

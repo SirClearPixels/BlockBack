@@ -150,7 +150,7 @@ final class UpdateChecker implements Listener, AutoCloseable {
             Version available = Version.parse(tag);
             if (available == null || available.compareTo(current) <= 0) return null;
             return new Offer(installed, available.normalized(),
-                    "https://github.com/SirClearPixels/BlockBack/releases/tag/" + tag);
+                    "https://modrinth.com/plugin/blockback");
         } catch (RuntimeException exception) {
             return null;
         }
