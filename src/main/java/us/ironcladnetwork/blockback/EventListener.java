@@ -10,6 +10,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
@@ -23,7 +24,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Handles player interaction events to provide BlockBack functionality.
- * Listens for right-click events with appropriate tools and reverts blocks
+ * Restores blocks on right-click and advances copper oxidation on sneak-left-click,
  * based on player permissions and settings.
  */
 public class EventListener implements Listener {
@@ -73,6 +74,11 @@ public class EventListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onCopperBlockClick(PlayerInteractEvent event) {
         copperBack.handle(event);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onCopperBlockBreak(BlockBreakEvent event) {
+        copperBack.guardBreak(event);
     }
 
     public long pollAndResetBarkbackCount() {

@@ -1,6 +1,7 @@
 package us.ironcladnetwork.blockback;
 
 import org.bukkit.Material;
+import org.bukkit.GameMode;
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
 import org.bukkit.Registry;
@@ -17,6 +18,7 @@ import org.bukkit.block.data.type.Chest;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -110,38 +112,54 @@ class CopperBackTest {
         };
     }
 
-    @Test void eachHandCombinationAdvancesOncePerGestureUntilTerminal() {
-        for (String hands : new String[]{"main", "off", "both"}) {
+    @Test void mainHandAxeAdvancesOncePerAttackRegardlessOfOffhandUntilTerminal() {
+        for (Material offhand : new Material[]{Material.AIR, Material.IRON_AXE, Material.STICK}) {
             Fixture f = new Fixture("COPPER_BLOCK");
-            if (hands.equals("off")) f.main = Material.STICK;
-            if (!hands.equals("main")) f.off = Material.IRON_AXE;
+            f.off = offhand;
             for (Material expected : new Material[]{Material.EXPOSED_COPPER, Material.WEATHERED_COPPER, Material.OXIDIZED_COPPER, Material.OXIDIZED_COPPER}) {
-                f.listener.onCopperBlockClick(f.click(EquipmentSlot.HAND));
-                PlayerInteractEvent offhand = f.click(EquipmentSlot.OFF_HAND);
-                f.listener.onCopperBlockClick(offhand);
-                assertEquals(expected, f.block.type(), hands);
-                if (!hands.equals("main")) assertConsumed(offhand);
+                PlayerInteractEvent attack = f.event(Action.LEFT_CLICK_BLOCK, EquipmentSlot.HAND);
+                f.listener.onCopperBlockClick(attack);
+                assertConsumed(attack);
+                assertEquals(expected, f.block.type(), offhand.name());
+                assertPassThrough(f, f.event(Action.LEFT_CLICK_BLOCK, EquipmentSlot.OFF_HAND));
             }
-            assertEquals(3, f.block.writes, hands);
-            assertEquals(3, f.sounds.get(), hands);
+            assertEquals(3, f.block.writes, offhand.name());
+            assertEquals(3, f.sounds.get(), offhand.name());
         }
     }
 
-    @Test void ordinaryClicksLeaveBothHandsAndAllCopperVanillaActionsUntouched() {
-        for (String material : new String[]{"COPPER_BLOCK", "EXPOSED_COPPER", "WAXED_COPPER_BLOCK", "COPPER_CHEST", "OXIDIZED_COPPER_GOLEM_STATUE"}) {
+    @Test void everyRightClickAndSneakRightClickLeavesCopperVanillaActionsUntouched() {
+        for (String material : new String[]{"COPPER_BLOCK", "EXPOSED_COPPER", "OXIDIZED_COPPER", "WAXED_COPPER_BLOCK",
+                "CUT_COPPER_STAIRS", "COPPER_DOOR", "COPPER_TRAPDOOR", "COPPER_CHEST", "COPPER_GOLEM_STATUE", "OXIDIZED_COPPER_GOLEM_STATUE"}) {
             if (Material.getMaterial(material) == null) continue;
             Fixture f = new Fixture(material);
             f.off = Material.IRON_AXE;
-            f.sneaking = false;
-            for (EquipmentSlot hand : new EquipmentSlot[]{EquipmentSlot.HAND, EquipmentSlot.OFF_HAND}) {
-                PlayerInteractEvent event = f.click(hand);
-                Event.Result blockUse = event.useInteractedBlock(), itemUse = event.useItemInHand();
-                f.listener.onCopperBlockClick(event);
-                assertEquals(blockUse, event.useInteractedBlock());
-                assertEquals(itemUse, event.useItemInHand());
-                assertEquals(0, f.block.writes);
+            for (boolean sneak : new boolean[]{false, true}) {
+                f.sneaking = sneak;
+                for (EquipmentSlot hand : new EquipmentSlot[]{EquipmentSlot.HAND, EquipmentSlot.OFF_HAND}) {
+                    for (Event.Result blockUse : Event.Result.values()) {
+                        for (Event.Result itemUse : Event.Result.values()) {
+                            PlayerInteractEvent event = f.event(Action.RIGHT_CLICK_BLOCK, hand);
+                            event.setUseInteractedBlock(blockUse);
+                            event.setUseItemInHand(itemUse);
+                            assertPassThrough(f, event);
+                        }
+                    }
+                }
             }
         }
+    }
+
+    static void assertPassThrough(Fixture f, PlayerInteractEvent event) {
+        Event.Result blockUse = event.useInteractedBlock(), itemUse = event.useItemInHand();
+        String original = f.block.serialized;
+        int writes = f.block.writes, sounds = f.sounds.get();
+        f.listener.onCopperBlockClick(event);
+        assertEquals(blockUse, event.useInteractedBlock());
+        assertEquals(itemUse, event.useItemInHand());
+        assertEquals(original, f.block.serialized);
+        assertEquals(writes, f.block.writes);
+        assertEquals(sounds, f.sounds.get());
     }
 
     @Test void successfulBooleanWithoutActualConversionIsNotSuccess() {
@@ -149,6 +167,60 @@ class CopperBackTest {
         f.block.ignoreNextUpdate = true;
         f.listener.onCopperBlockClick(f.click(EquipmentSlot.HAND));
         assertEquals(Material.COPPER_BLOCK, f.block.type());
+        assertEquals(0, f.sounds.get());
+    }
+
+    @Test void ownedSneakAxeBreaksAreCancelledWithoutOxidizingInEitherGameMode() {
+        for (GameMode gameMode : new GameMode[]{GameMode.SURVIVAL, GameMode.CREATIVE}) {
+            for (String material : new String[]{"COPPER_BLOCK", "EXPOSED_COPPER", "OXIDIZED_COPPER", "WAXED_COPPER_BLOCK", "COPPER_CHEST"}) {
+                if (Material.getMaterial(material) == null) continue;
+                Fixture f = new Fixture(material);
+                f.gameMode = gameMode;
+                BlockBreakEvent event = new BlockBreakEvent(f.block.block, f.player);
+                f.listener.onCopperBlockBreak(event);
+                assertTrue(event.isCancelled(), gameMode + " " + material);
+                assertEquals(Material.valueOf(material), f.block.type());
+                assertEquals(0, f.block.writes);
+                assertEquals(0, f.sounds.get());
+            }
+        }
+    }
+
+    @Test void ordinaryOrIneligibleBreaksPassThroughAndExistingCancellationStays() {
+        for (String reason : new String[]{"ordinary", "tool", "offhand-only", "permission", "preference", "other", "cancelled"}) {
+            Fixture f = new Fixture(reason.equals("other") ? "STONE" : "COPPER_BLOCK");
+            if (reason.equals("ordinary")) f.sneaking = false;
+            if (reason.equals("tool")) f.main = Material.DIAMOND_PICKAXE;
+            if (reason.equals("offhand-only")) { f.main = Material.STICK; f.off = Material.IRON_AXE; }
+            if (reason.equals("permission")) f.permitted = false;
+            if (reason.equals("preference")) f.enabled = false;
+            BlockBreakEvent event = new BlockBreakEvent(f.block.block, f.player);
+            event.setCancelled(reason.equals("cancelled"));
+            event.setDropItems(false);
+            event.setExpToDrop(7);
+            f.listener.onCopperBlockBreak(event);
+            assertEquals(reason.equals("cancelled"), event.isCancelled(), reason);
+            assertFalse(event.isDropItems());
+            assertEquals(7, event.getExpToDrop());
+            assertEquals(0, f.block.writes);
+            assertEquals(0, f.sounds.get());
+        }
+    }
+
+    @Test void miningStartedBeforeSneakingIsGuardedUntilSneakIsReleased() {
+        Fixture f = new Fixture("COPPER_BLOCK");
+        f.sneaking = false;
+        assertPassThrough(f, f.event(Action.LEFT_CLICK_BLOCK, EquipmentSlot.HAND));
+        f.sneaking = true;
+        BlockBreakEvent delayed = new BlockBreakEvent(f.block.block, f.player);
+        f.listener.onCopperBlockBreak(delayed);
+        assertTrue(delayed.isCancelled());
+        assertEquals(Material.COPPER_BLOCK, f.block.type());
+        f.sneaking = false;
+        BlockBreakEvent ordinary = new BlockBreakEvent(f.block.block, f.player);
+        f.listener.onCopperBlockBreak(ordinary);
+        assertFalse(ordinary.isCancelled());
+        assertEquals(0, f.block.writes);
         assertEquals(0, f.sounds.get());
     }
 
@@ -348,28 +420,35 @@ class CopperBackTest {
         });
     }
 
-    @Test void freshCopperAdvancesThroughProductionListenerAndConsumesBothUses() {
-        Fixture f = new Fixture("COPPER_BLOCK");
-        PlayerInteractEvent event = f.click(EquipmentSlot.HAND);
-        f.listener.onCopperBlockClick(event);
-        assertEquals(Material.EXPOSED_COPPER, f.block.type());
-        assertEquals(1, f.block.writes);
-        assertConsumed(event);
+    @Test void sneakLeftCancelsAttackBeforeConversionInSurvivalAndCreative() {
+        for (GameMode gameMode : new GameMode[]{GameMode.SURVIVAL, GameMode.CREATIVE}) {
+            Fixture f = new Fixture("COPPER_BLOCK");
+            f.gameMode = gameMode;
+            PlayerInteractEvent event = f.event(Action.LEFT_CLICK_BLOCK, EquipmentSlot.HAND);
+            f.listener.onCopperBlockClick(event);
+            assertEquals(Material.EXPOSED_COPPER, f.block.type());
+            assertEquals(1, f.block.writes);
+            assertConsumed(event);
+            assertEquals(1, f.sounds.get());
+            assertEquals(CopperBack.Result.CHANGED, f.copper.handle(f.click(EquipmentSlot.HAND)));
+            assertEquals(Material.WEATHERED_COPPER, f.block.type());
+        }
     }
 
     @Test void ordinaryClicksAndIneligiblePlayersPassThroughUnchanged() {
-        for (String reason : new String[]{"ordinary", "left", "tool", "permission", "preference", "other"}) {
+        for (String reason : new String[]{"ordinary", "offhand-only", "offhand-event", "null-hand", "tool", "permission", "preference", "other", "left-air", "right-air"}) {
             Fixture f = new Fixture(reason.equals("other") ? "STONE" : "EXPOSED_COPPER");
             if (reason.equals("ordinary")) f.sneaking = false;
             if (reason.equals("tool")) f.main = Material.DIAMOND_PICKAXE;
+            if (reason.equals("offhand-only")) { f.main = Material.STICK; f.off = Material.IRON_AXE; }
+            if (reason.equals("offhand-event")) f.off = Material.IRON_AXE;
             if (reason.equals("permission")) f.permitted = false;
             if (reason.equals("preference")) f.enabled = false;
-            PlayerInteractEvent event = f.event(reason.equals("left") ? Action.LEFT_CLICK_BLOCK : Action.RIGHT_CLICK_BLOCK, EquipmentSlot.HAND);
-            Event.Result blockUse = event.useInteractedBlock(), itemUse = event.useItemInHand();
-            f.listener.onCopperBlockClick(event);
-            assertEquals(0, f.block.writes, reason);
-            assertEquals(blockUse, event.useInteractedBlock(), reason);
-            assertEquals(itemUse, event.useItemInHand(), reason);
+            Action action = reason.equals("left-air") ? Action.LEFT_CLICK_AIR
+                    : reason.equals("right-air") ? Action.RIGHT_CLICK_AIR : Action.LEFT_CLICK_BLOCK;
+            EquipmentSlot hand = reason.equals("null-hand") ? null
+                    : reason.equals("offhand-event") ? EquipmentSlot.OFF_HAND : EquipmentSlot.HAND;
+            assertPassThrough(f, f.event(action, hand));
         }
     }
 
@@ -389,26 +468,33 @@ class CopperBackTest {
     }
 
     @Test void terminalAndWaxedCopperConsumeWithoutMutationOrSound() {
-        for (String name : new String[]{"OXIDIZED_COPPER", "WAXED_COPPER_BLOCK", "WAXED_EXPOSED_COPPER", "WAXED_WEATHERED_COPPER", "WAXED_OXIDIZED_COPPER"}) {
-            Fixture f = new Fixture(name);
-            PlayerInteractEvent event = f.click(EquipmentSlot.HAND);
-            f.listener.onCopperBlockClick(event);
-            assertConsumed(event);
-            assertEquals(0, f.block.writes, name);
-            assertEquals(0, f.sounds.get());
+        for (GameMode gameMode : new GameMode[]{GameMode.SURVIVAL, GameMode.CREATIVE}) {
+            for (String name : new String[]{"OXIDIZED_COPPER", "WAXED_COPPER_BLOCK", "WAXED_EXPOSED_COPPER", "WAXED_WEATHERED_COPPER", "WAXED_OXIDIZED_COPPER"}) {
+                Fixture f = new Fixture(name);
+                f.gameMode = gameMode;
+                PlayerInteractEvent event = f.click(EquipmentSlot.HAND);
+                f.listener.onCopperBlockClick(event);
+                assertConsumed(event);
+                assertEquals(Material.valueOf(name), f.block.type());
+                assertEquals(0, f.block.writes, name);
+                assertEquals(0, f.sounds.get());
+            }
         }
     }
 
     @Test void parseAndUpdateFailuresConsumeAndRestoreWithoutSuccess() {
-        for (boolean parseFailure : new boolean[]{true, false}) {
-            Fixture f = new Fixture("EXPOSED_COPPER");
-            f.parseFailure = parseFailure;
-            f.block.failNextUpdate = !parseFailure;
-            PlayerInteractEvent event = f.click(EquipmentSlot.HAND);
-            f.listener.onCopperBlockClick(event);
-            assertConsumed(event);
-            assertEquals(Material.EXPOSED_COPPER, f.block.type());
-            assertEquals(0, f.sounds.get());
+        for (GameMode gameMode : new GameMode[]{GameMode.SURVIVAL, GameMode.CREATIVE}) {
+            for (boolean parseFailure : new boolean[]{true, false}) {
+                Fixture f = new Fixture("EXPOSED_COPPER");
+                f.gameMode = gameMode;
+                f.parseFailure = parseFailure;
+                f.block.failNextUpdate = !parseFailure;
+                PlayerInteractEvent event = f.click(EquipmentSlot.HAND);
+                f.listener.onCopperBlockClick(event);
+                assertConsumed(event);
+                assertEquals(Material.EXPOSED_COPPER, f.block.type());
+                assertEquals(0, f.sounds.get());
+            }
         }
     }
 
@@ -422,6 +508,7 @@ class CopperBackTest {
     }
 
     static void assertConsumed(PlayerInteractEvent event) {
+        assertTrue(event.isCancelled(), "server attack dispatch observes the cancelled state");
         assertEquals(Event.Result.DENY, event.useInteractedBlock());
         assertEquals(Event.Result.DENY, event.useItemInHand());
     }
@@ -430,6 +517,8 @@ class CopperBackTest {
         final FakeBlock block;
         boolean sneaking = true, permitted = true, enabled = true, parseFailure;
         Material main = Material.DIAMOND_AXE, off = Material.AIR;
+        GameMode gameMode = GameMode.SURVIVAL;
+        PlayerInteractEvent currentEvent;
         final UUID uuid = UUID.randomUUID();
         final AtomicInteger sounds = new AtomicInteger();
         final List<String> messages = new ArrayList<>();
@@ -446,26 +535,31 @@ class CopperBackTest {
             case "isSneaking" -> sneaking;
             case "hasPermission" -> permitted;
             case "getInventory" -> inventory;
+            case "getGameMode" -> gameMode;
             case "getUniqueId" -> uuid;
             case "getName" -> "CopperTester";
             case "sendMessage" -> { if (a[0] instanceof String message) messages.add(message); yield null; }
             default -> defaultValue(m.getReturnType());
         });
         final EventListener listener;
+        final CopperBack copper;
 
         Fixture(String material) { this(material, ""); }
         Fixture(String material, String properties) {
             block = new FakeBlock("minecraft:" + material.toLowerCase(java.util.Locale.ROOT) + properties);
-            CopperBack copper = new CopperBack(plugin, p -> enabled, serialized -> {
+            copper = new CopperBack(plugin, p -> enabled, serialized -> {
+                assertConsumed(currentEvent); // Cancellation must precede even parsing and the first write.
                 if (parseFailure) throw new IllegalArgumentException("fake parser rejection");
                 return data(serialized);
             }, p -> sounds.incrementAndGet());
             listener = new EventListener(plugin, copper);
         }
 
-        PlayerInteractEvent click(EquipmentSlot hand) { return event(Action.RIGHT_CLICK_BLOCK, hand); }
+        PlayerInteractEvent click(EquipmentSlot hand) { return event(Action.LEFT_CLICK_BLOCK, hand); }
         PlayerInteractEvent event(Action action, EquipmentSlot hand) {
-            return new PlayerInteractEvent(player, action, new ItemStack(hand == EquipmentSlot.HAND ? main : off), block.block, BlockFace.UP, hand);
+            currentEvent = new PlayerInteractEvent(player, action, new ItemStack(hand == EquipmentSlot.HAND ? main : off),
+                    action == Action.LEFT_CLICK_AIR || action == Action.RIGHT_CLICK_AIR ? null : block.block, BlockFace.UP, hand);
+            return currentEvent;
         }
     }
 

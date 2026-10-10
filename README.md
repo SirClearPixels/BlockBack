@@ -10,7 +10,7 @@
 [![Hangar](https://img.shields.io/badge/Hangar-004C99?style=for-the-badge&logo=papermc&logoColor=white)](https://hangar.papermc.io/SirClearPixels/BlockBack)
 [![Hangar Downloads](https://img.shields.io/hangar/dt/BlockBack?style=flat-square&logo=papermc&color=004C99&label=Hangar)](https://hangar.papermc.io/SirClearPixels/BlockBack)
 
-BlockBack lets players restore bark, turn paths and farmland back into dirt, and control copper oxidation. Version 1.5.0 adds CopperBack: sneak + right-click with an axe to advance oxidation while ordinary axe use keeps vanilla scraping and wax removal.
+BlockBack lets players restore bark, turn paths and farmland back into dirt, and control copper oxidation. Version 1.5.0 adds CopperBack: sneak + left-click with an axe in your main hand to advance oxidation. All right-clicks, including sneak + right-click, keep vanilla behavior.
 
 ## Features
 
@@ -18,7 +18,7 @@ BlockBack lets players restore bark, turn paths and farmland back into dirt, and
 - **BarkBack**: Restore bark on stripped logs by right-clicking with an axe
 - **PathBack**: Convert path blocks back to dirt by right-clicking with a shovel  
 - **FarmBack**: Revert farmland to dirt by right-clicking with a hoe
-- **CopperBack**: Advance copper oxidation one stage with sneak + right-click using an axe (permission and player toggle default off)
+- **CopperBack**: Advance copper oxidation one stage with sneak + left-click using a main-hand axe (permission and player toggle default off)
 
 ### Player Settings and Compatibility
 - **Individual Feature Toggles**: Players can enable/disable each feature independently
@@ -45,9 +45,11 @@ BlockBack lets players restore bark, turn paths and farmland back into dirt, and
 
 Grant `blockback.copper` using your permission plugin, then have the player run `/copperback` to enable it. Both the permission and player preference default to off.
 
-Sneak + right-click with an axe advances unwaxed copper one oxidation stage. Fully oxidized copper stops there; waxed copper stays waxed. These enabled sneak gestures consume the axe action even when nothing changes. Ordinary right-click retains vanilla scraping, unwaxing and statue revival. Disable `/copperback` to restore vanilla sneak interactions too.
+Sneak + left-click with an axe in your main hand advances unwaxed copper one oxidation stage. Fully oxidized copper stops there; waxed copper stays waxed. With CopperBack enabled and permission granted, this gesture consumes the attack even when nothing changes. Left-clicking without sneaking breaks blocks normally. An offhand axe never activates CopperBack.
 
-All complete copper oxidation families available on the running server are recognized, including newer chests, bars, chains, lanterns, golem statues and lightning rods when present. Doors and double copper chests update their matching halves together. Main-hand axes take priority over an offhand axe; an offhand axe works when the main hand has no axe. Denied block or item interactions are left unchanged.
+All right-clicks and sneak + right-clicks retain vanilla behavior, including axe scraping, unwaxing, statue revival and interactions with copper chests, doors and trapdoors.
+
+All complete copper oxidation families available on the running server are recognized, including newer chests, bars, chains, lanterns, golem statues and lightning rods when present. Doors and double copper chests update their matching halves together. Denied block or item interactions are left unchanged.
 
 ### Commands
 - `/blockback` - View the status of all your BlockBack features
@@ -111,7 +113,7 @@ Player preferences are automatically saved in `players.yml` and include:
 
 ## Compatibility
 
-- **Minecraft Version**: 1.21.1 (fully tested)
+- **Minecraft API Baseline**: Spigot 1.21.1; runtime copper support adapts to the available oxidation families
 - **Java Version**: Java 21 or higher
 - **Server Software**: Paper, Spigot, or compatible forks
 

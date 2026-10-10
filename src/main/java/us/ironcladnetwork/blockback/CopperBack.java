@@ -12,6 +12,7 @@ import org.bukkit.block.data.type.Door;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -80,10 +81,8 @@ final class CopperBack {
     Result handle(PlayerInteractEvent event) {
         Block block = event.getClickedBlock();
         Player player = event.getPlayer();
-        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || block == null
-                || event.getHand() == null || !isAxe(event.getItem()) || !player.isSneaking()
-                || !player.hasPermission("blockback.copper") || !enabled.test(player)
-                || !COPPER.contains(block.getType())) return Result.PASS_THROUGH;
+        if (event.getAction() != Action.LEFT_CLICK_BLOCK || event.getHand() != EquipmentSlot.HAND
+                || !ownsGesture(player, block, event.getItem())) return Result.PASS_THROUGH;
 
         // Even a vanilla no-op prediction is conservatively respected: it is indistinguishable
         // from another plugin's denial. Never turn an existing DENY into ALLOW.
@@ -92,15 +91,27 @@ final class CopperBack {
 
         event.setUseInteractedBlock(Event.Result.DENY);
         event.setUseItemInHand(Event.Result.DENY);
-        // A second axe event must not advance twice or fall through to a vanilla scrape.
-        if (event.getHand() == EquipmentSlot.OFF_HAND
-                && isAxe(player.getInventory().getItemInMainHand())) return Result.CONSUMED;
 
         Material next = NEXT.get(block.getType());
         if (next == null) return Result.CONSUMED;
         Result result = convert(block, next);
         if (result == Result.CHANGED) changed.accept(player);
         return result;
+    }
+
+    void guardBreak(BlockBreakEvent event) {
+        // Mining started before the player sneaked can finish without another interact event.
+        // Guard only this owned gesture, and never advance oxidation from a break event.
+        if (!event.isCancelled() && ownsGesture(event.getPlayer(), event.getBlock(),
+                event.getPlayer().getInventory().getItemInMainHand())) {
+            event.setCancelled(true);
+        }
+    }
+
+    private boolean ownsGesture(Player player, Block block, ItemStack item) {
+        return block != null && isAxe(item) && player.isSneaking()
+                && player.hasPermission("blockback.copper") && enabled.test(player)
+                && COPPER.contains(block.getType());
     }
 
     private static boolean isAxe(ItemStack item) {

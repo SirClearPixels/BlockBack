@@ -14,7 +14,7 @@ import org.bukkit.plugin.java.JavaPlugin;
  * - BarkBack: Revert stripped logs back to regular logs
  * - PathBack: Revert dirt paths back to dirt
  * - FarmBack: Revert farmland back to dirt
- * - CopperBack: Advance copper oxidation with sneak + right-click using an axe
+ * - CopperBack: Advance copper oxidation with sneak + left-click using a main-hand axe
  * 
  * @author ClearPixels
  * @version 1.5.0
