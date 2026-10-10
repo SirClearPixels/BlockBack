@@ -4,7 +4,7 @@ milestone: v1.5.0
 milestone_name: Server-Owner Controls & CopperBack
 status: planning
 stopped_at: Phase 5 context gathered
-last_updated: "2026-10-10T17:41:00Z"
+last_updated: "2026-10-10T18:58:52Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 7
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-30)
 Phase: 5
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-10 - Added logo-inspired RGB styling to quick task 261010-gj4 admin notices; 35 tests pass on both APIs; rebuilt 1.5.0 JAR deployed and Paper startup verified. Player-visible color acceptance pending.
+Last activity: 2026-10-10 - Completed quick task 261010-j0n: four independent default-off tool durability switches; 53 tests pass on both APIs; final baseline 1.5.0 JAR installed on the test server. Player-visible durability and Folia acceptance pending.
 
 Progress: [----------] 0% (0/7 phases complete)
 
@@ -39,8 +39,10 @@ Progress: [----------] 0% (0/7 phases complete)
 | 2026-05-02 | bstats-integration    | Wire bStats Metrics (plugin ID 31058) with 4 custom charts    |
 | 2026-10-09 | [261009-t73-copperback](./quick/261009-t73-add-copperback-oxidation-control-while-p/261009-t73-SUMMARY.md) | Main-hand sneak-left oxidation with all right-clicks vanilla; 23 tests pass on Spigot 1.21.1 and 26.3; user accepted the test-server gesture and authorized v1.5.0 release. |
 | 2026-10-10 | [261010-gj4-update-notices](./quick/261010-gj4-add-published-release-update-notificatio/261010-gj4-SUMMARY.md) | Startup/daily published-release checks, cached admin join notices and reloadable opt-out; code through `7dc7559`; 35 tests pass on both APIs; real transport and Paper startup pass; live admin-chat/Folia acceptance pending. |
+| 2026-10-10 | [261010-j0n-durability](./quick/261010-j0n-add-configurable-per-feature-tool-durabi/261010-j0n-SUMMARY.md) | Four default-off durability switches, reloadable immutable settings and one normal tool use per successful action; code through `c0b1d5b`; 53 tests pass on both APIs; live player/Folia acceptance pending. |
 
 ## Accumulated Context
+
 
 ### Decisions
 
