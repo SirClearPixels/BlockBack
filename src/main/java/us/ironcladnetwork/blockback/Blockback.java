@@ -23,6 +23,7 @@ public final class Blockback extends JavaPlugin {
 
     /** bStats plugin ID — see https://bstats.org/plugin/bukkit/BlockBack/31058 */
     private static final int BSTATS_PLUGIN_ID = 31058;
+    private UpdateChecker updateChecker;
 
     /**
      * Called when the plugin is enabled. Initializes managers, registers events,
@@ -121,6 +122,16 @@ public final class Blockback extends JavaPlugin {
             }
         }
 
+        // Release checks are optional; discovery failure must not disable gameplay.
+        try {
+            updateChecker = new UpdateChecker(getDescription().getVersion(), getLogger());
+            Bukkit.getPluginManager().registerEvents(updateChecker, this);
+            updateChecker.start();
+        } catch (Exception exception) {
+            if (updateChecker != null) updateChecker.close();
+            getLogger().warning("Could not initialize BlockBack update checks.");
+        }
+
         // Log successful load
         getLogger().info("BlockBack has loaded successfully!");
     }
@@ -131,6 +142,7 @@ public final class Blockback extends JavaPlugin {
      */
     @Override
     public void onDisable() {
+        if (updateChecker != null) updateChecker.close();
         getLogger().info("BlockBack is shutting down...");
         
         // Ensure all player data saves complete before shutdown

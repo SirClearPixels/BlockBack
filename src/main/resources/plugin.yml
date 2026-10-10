@@ -34,6 +34,10 @@ commands:
     permission: blockback.use
 
 permissions:
+  blockback.update:
+    default: op
+    description: Receive notices about newer published BlockBack releases on join.
+
   blockback.copper:
     default: false
     description: Allows the player to enable CopperBack oxidation control.
