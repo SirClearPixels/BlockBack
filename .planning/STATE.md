@@ -4,7 +4,7 @@ milestone: v1.5.0
 milestone_name: Server-Owner Controls & CopperBack
 status: planning
 stopped_at: Phase 5 context gathered
-last_updated: "2026-10-10T04:44:00Z"
+last_updated: "2026-10-10T04:51:01Z"
 last_activity: 2026-10-09
 progress:
   total_phases: 7
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-30)
 Phase: 5
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-09 - CopperBack quick task 261009-t73 changed to sneak-left with a main-hand axe; 23 tests passed on both APIs; version 1.5.0 installed and running on the existing test server; player acceptance pending.
+Last activity: 2026-10-09 - User accepted CopperBack sneak-left behavior on the test server and authorized the GitHub push and v1.5.0 tag; 23 automated tests passed on both APIs.
 
 Progress: [----------] 0% (0/7 phases complete)
 
@@ -37,7 +37,7 @@ Progress: [----------] 0% (0/7 phases complete)
 | Date       | Slug                  | Summary                                                       |
 |------------|-----------------------|---------------------------------------------------------------|
 | 2026-05-02 | bstats-integration    | Wire bStats Metrics (plugin ID 31058) with 4 custom charts    |
-| 2026-10-09 | [261009-t73-copperback](./quick/261009-t73-add-copperback-oxidation-control-while-p/261009-t73-SUMMARY.md) | Main-hand sneak-left oxidation with all right-clicks vanilla; 23 tests pass on Spigot 1.21.1 and 26.3; 1.5.0 running at 127.0.0.1:25568; player acceptance pending. |
+| 2026-10-09 | [261009-t73-copperback](./quick/261009-t73-add-copperback-oxidation-control-while-p/261009-t73-SUMMARY.md) | Main-hand sneak-left oxidation with all right-clicks vanilla; 23 tests pass on Spigot 1.21.1 and 26.3; user accepted the test-server gesture and authorized v1.5.0 release. |
 
 ## Accumulated Context
 

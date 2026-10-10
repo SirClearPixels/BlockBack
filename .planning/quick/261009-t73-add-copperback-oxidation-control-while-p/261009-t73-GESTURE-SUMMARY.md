@@ -2,7 +2,7 @@
 phase: quick-261009-t73-gesture
 status: complete
 completed: 2026-10-09
-live_player_acceptance: pending
+live_player_acceptance: user-approved
 ---
 
 # CopperBack gesture follow-up
@@ -34,6 +34,8 @@ The user found that sneak-right oxidation displaced vanilla scraping on interact
 - Ten control signs were updated through a sign-only function. Entrance sign NBT confirms `MAIN-HAND AXE` / `Sneak + LEFT`. No sample blocks or inventories were reset. World save confirmed at 23:43:26; temporary forced chunks removed.
 - `TESTING.txt` and the dormant fixture builder now use the new gesture. Console remains attached to exec session 50890 for this app session.
 
-## Pending player acceptance
+## Player acceptance and release approval
 
-Try sneak-left on copper in Creative and Survival: advance exactly one stage without breaking, dropping items or opening the block. Sneak-right should scrape/unwax interactable copper normally. Confirm terminal/waxed no-op, held attack, already-started mining, chest contents and paired door/chest behavior. Protection-plugin and live Folia checks remain pending; this follow-up does not close the wider milestone.
+After testing the deployed gesture, the user reported "looks good" and explicitly requested committing, pushing to GitHub and adding a new version tag. This records acceptance of the tested interaction, not a claim that every checklist scenario was individually observed. Release version/tag: 1.5.0 / v1.5.0.
+
+Individual Survival/Creative edge cases, held attack, already-started mining, terminal/waxed behavior, chest contents and paired blocks are covered by automated checks or remain unitemized in the user's feedback. Protection-plugin and live Folia checks remain pending; this follow-up does not close the wider milestone.
