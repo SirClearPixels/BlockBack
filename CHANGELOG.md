@@ -5,6 +5,21 @@ All notable changes to BlockBack are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-10-09
+
+### Added
+- **CopperBack**: Sneak + right-click with an axe advances copper oxidation one stage, stopping at fully oxidized. Ordinary axe use retains vanilla scraping, wax removal and statue revival.
+- Runtime support for all 15 current copper oxidation families, with block-state preservation and paired updates for doors and double copper chests.
+- `/copperback`, persistent player preferences, status output and configurable sounds. Both the player preference and `blockback.copper` permission default to off.
+- Behavioral regression coverage for oxidation, interaction denials, both hands, paired blocks, snapshot handling, commands and saved preferences.
+
+### Fixed
+- Toggling a feature after player-cache eviction preserves the player's other saved preferences.
+
+### Verification
+- 20 automated tests pass against Spigot 1.21.1 and 26.3; the release retains Java 21 bytecode compatibility.
+- Live server acceptance remains pending for Folia, protection plugins, inventories and tile data.
+
 ## [1.4.1] - 2026-05-08
 
 ### Fixed

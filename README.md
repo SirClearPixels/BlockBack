@@ -10,7 +10,7 @@
 [![Hangar](https://img.shields.io/badge/Hangar-004C99?style=for-the-badge&logo=papermc&logoColor=white)](https://hangar.papermc.io/SirClearPixels/BlockBack)
 [![Hangar Downloads](https://img.shields.io/hangar/dt/BlockBack?style=flat-square&logo=papermc&color=004C99&label=Hangar)](https://hangar.papermc.io/SirClearPixels/BlockBack)
 
-BlockBack is a feature-rich Minecraft plugin that enhances your gameplay by allowing you to rebark logs, dig up paths, and un-till farmland with simple right-clicks. Version 1.2.0 introduces player toggles, custom sounds, and extensive configuration options!
+BlockBack lets players restore bark, turn paths and farmland back into dirt, and control copper oxidation. Version 1.5.0 adds CopperBack: sneak + right-click with an axe to advance oxidation while ordinary axe use keeps vanilla scraping and wax removal.
 
 ## Features
 
@@ -20,7 +20,7 @@ BlockBack is a feature-rich Minecraft plugin that enhances your gameplay by allo
 - **FarmBack**: Revert farmland to dirt by right-clicking with a hoe
 - **CopperBack**: Advance copper oxidation one stage with sneak + right-click using an axe (permission and player toggle default off)
 
-### New in Version 1.2.0
+### Player Settings and Compatibility
 - **Individual Feature Toggles**: Players can enable/disable each feature independently
 - **Persistent Settings**: Player preferences are saved and persist across server restarts
 - **Custom Sound Effects**: Fully configurable sounds for each action

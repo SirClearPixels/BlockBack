@@ -5,7 +5,7 @@ api-version: '1.21'
 folia-supported: true
 load: POSTWORLD
 authors: [ ClearPixels ]
-description: Revert Path Blocks and Stripped Logs and Farmland
+description: Restore stripped wood, paths and farmland, and control copper oxidation
 website: IroncladNetwork.us
 commands:
   copperback:

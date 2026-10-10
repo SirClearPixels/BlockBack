@@ -4,7 +4,7 @@ milestone: v1.5.0
 milestone_name: Server-Owner Controls & CopperBack
 status: planning
 stopped_at: Phase 5 context gathered
-last_updated: "2026-10-10T02:26:17Z"
+last_updated: "2026-10-10T02:49:16Z"
 last_activity: 2026-10-09
 progress:
   total_phases: 7
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-30)
 Phase: 5
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-09 - Completed quick task 261009-t73: CopperBack oxidation control; live-server acceptance pending.
+Last activity: 2026-10-09 - CopperBack quick task 261009-t73 rebuilt as version 1.5.0 at the user's request; 20 tests passed; live-server acceptance pending.
 
 Progress: [----------] 0% (0/7 phases complete)
 
