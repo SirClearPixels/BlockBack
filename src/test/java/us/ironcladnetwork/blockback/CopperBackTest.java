@@ -260,6 +260,7 @@ class CopperBackTest {
     @Test void eitherDoorHalfUpdatesThePairAndSecondFailureRestoresBoth() {
         for (String half : new String[]{"lower", "upper"}) {
             Fixture f = new Fixture("COPPER_DOOR", "[facing=east,half=" + half + ",hinge=right,open=true,powered=true]");
+            f.block.expectedRelative = half.equals("lower") ? BlockFace.UP : BlockFace.DOWN;
             f.block.partner = new FakeBlock(f.block.serialized.replace("half=" + half, "half=" + (half.equals("lower") ? "upper" : "lower")));
             String first = f.block.serialized, second = f.block.partner.serialized;
             f.block.partner.failNextUpdate = true;
@@ -320,6 +321,31 @@ class CopperBackTest {
         assertEquals("left: named enchanted items", f.block.tile.get("inventory"));
         assertEquals("right: other items", f.block.partner.tile.get("inventory"));
         assertEquals(1, f.sounds.get());
+    }
+
+    @Test void doubleChestFindsEachHalfInEveryFacingWithoutLoadingChunks() {
+        if (Material.getMaterial("COPPER_CHEST") == null) return;
+        Map<String, BlockFace> leftDirections = Map.of("north", BlockFace.EAST, "east", BlockFace.SOUTH,
+                "south", BlockFace.WEST, "west", BlockFace.NORTH);
+        leftDirections.forEach((facing, direction) -> {
+            for (String type : new String[]{"left", "right"}) {
+                Fixture f = new Fixture("COPPER_CHEST", "[facing=" + facing + ",type=" + type + ",waterlogged=false]");
+                f.block.expectedRelative = type.equals("left") ? direction : direction.getOppositeFace();
+                f.block.partner = new FakeBlock(f.block.serialized.replace("type=" + type,
+                        "type=" + (type.equals("left") ? "right" : "left")));
+                f.block.chunkLoaded = false;
+                PlayerInteractEvent unloaded = f.click(EquipmentSlot.HAND);
+                f.listener.onCopperBlockClick(unloaded);
+                assertConsumed(unloaded);
+                assertEquals(0, f.block.relativeCalls);
+                assertEquals(0, f.block.writes);
+                f.block.chunkLoaded = true;
+                f.listener.onCopperBlockClick(f.click(EquipmentSlot.HAND));
+                assertEquals(1, f.block.relativeCalls);
+                assertEquals(Material.getMaterial("EXPOSED_COPPER_CHEST"), f.block.type());
+                assertEquals(Material.getMaterial("EXPOSED_COPPER_CHEST"), f.block.partner.type());
+            }
+        });
     }
 
     @Test void freshCopperAdvancesThroughProductionListenerAndConsumesBothUses() {
@@ -450,12 +476,19 @@ class CopperBackTest {
         boolean ignoreNextUpdate;
         Map<String, Object> tile = new HashMap<>();
         FakeBlock partner;
-        final World world = proxy(World.class, (p, m, a) -> m.getName().equals("isChunkLoaded") ? true : defaultValue(m.getReturnType()));
+        BlockFace expectedRelative;
+        int relativeCalls;
+        boolean chunkLoaded = true;
+        final World world = proxy(World.class, (p, m, a) -> m.getName().equals("isChunkLoaded") ? chunkLoaded : defaultValue(m.getReturnType()));
         final Block block = proxy(Block.class, (p, m, a) -> switch (m.getName()) {
             case "getType" -> type();
             case "getBlockData" -> data(serialized);
             case "getState" -> snapshot();
-            case "getRelative" -> partner == null ? null : partner.block;
+            case "getRelative" -> {
+                relativeCalls++;
+                if (expectedRelative != null) assertEquals(expectedRelative, a[0]);
+                yield partner == null ? null : partner.block;
+            }
             case "getWorld" -> world;
             case "getX", "getY", "getZ" -> 0;
             default -> defaultValue(m.getReturnType());
