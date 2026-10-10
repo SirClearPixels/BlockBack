@@ -1,10 +1,14 @@
 package us.ironcladnetwork.blockback;
 
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.Bisected;
+import org.bukkit.block.data.type.Door;
+import org.bukkit.block.data.type.Chest;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
@@ -27,6 +31,119 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Real event objects and production handlers; block snapshots are API-contract fakes, not a server. */
 class CopperBackTest {
+    @Test void allIndependentExpectedFamiliesAdvanceThreeTimesAndStop() {
+        String[] bases = {"COPPER_BLOCK", "CUT_COPPER", "CHISELED_COPPER", "COPPER_GRATE", "COPPER_BULB",
+                "CUT_COPPER_SLAB", "CUT_COPPER_STAIRS", "COPPER_TRAPDOOR", "COPPER_DOOR", "COPPER_CHEST",
+                "COPPER_BARS", "COPPER_CHAIN", "COPPER_LANTERN", "COPPER_GOLEM_STATUE", "LIGHTNING_ROD"};
+        for (String base : bases) {
+            String staged = base.equals("COPPER_BLOCK") ? "COPPER" : base;
+            if (Material.getMaterial("EXPOSED_" + staged) == null) continue;
+            String props = base.endsWith("DOOR") && !base.endsWith("TRAPDOOR")
+                    ? "[facing=north,half=lower,hinge=left,open=true,powered=true]" : "";
+            Fixture f = new Fixture(base, props);
+            if (base.equals("COPPER_DOOR")) f.block.partner = new FakeBlock(f.block.serialized.replace("lower", "upper"));
+            for (String stage : new String[]{"EXPOSED_", "WEATHERED_", "OXIDIZED_"}) {
+                f.listener.onCopperBlockClick(f.click(EquipmentSlot.HAND));
+                assertEquals(Material.valueOf(stage + staged), f.block.type(), base);
+            }
+            assertEquals(3, f.block.writes, base);
+            assertEquals(3, f.sounds.get(), base);
+            f.listener.onCopperBlockClick(f.click(EquipmentSlot.HAND));
+            assertEquals(3, f.block.writes, base);
+            for (String name : new String[]{base, "EXPOSED_" + staged, "WEATHERED_" + staged, "OXIDIZED_" + staged}) {
+                Fixture wax = new Fixture("WAXED_" + name, props);
+                PlayerInteractEvent event = wax.click(EquipmentSlot.HAND);
+                wax.listener.onCopperBlockClick(event);
+                assertConsumed(event);
+                assertEquals(0, wax.block.writes, name);
+            }
+        }
+    }
+
+    @Test void completePropertySuffixIsPreservedForEveryBlockShape() {
+        Map<String, String> examples = Map.ofEntries(
+                Map.entry("CUT_COPPER_SLAB", "[type=top,waterlogged=true]"),
+                Map.entry("CUT_COPPER_STAIRS", "[facing=west,half=top,shape=inner_left,waterlogged=true]"),
+                Map.entry("COPPER_BULB", "[lit=true,powered=true]"),
+                Map.entry("COPPER_TRAPDOOR", "[facing=east,half=top,open=true,powered=true,waterlogged=true]"),
+                Map.entry("COPPER_CHAIN", "[axis=x,waterlogged=true]"),
+                Map.entry("COPPER_LANTERN", "[hanging=true,waterlogged=true]"),
+                Map.entry("COPPER_CHEST", "[facing=south,type=single,waterlogged=true]"),
+                Map.entry("COPPER_GOLEM_STATUE", "[facing=west,copper_golem_pose=running]"),
+                Map.entry("LIGHTNING_ROD", "[facing=down,powered=true,waterlogged=true]"));
+        examples.forEach((base, properties) -> {
+            if (Material.getMaterial("EXPOSED_" + base) == null) return;
+            Fixture f = new Fixture(base, properties);
+            f.listener.onCopperBlockClick(f.click(EquipmentSlot.HAND));
+            assertEquals("minecraft:exposed_" + base.toLowerCase(java.util.Locale.ROOT) + properties, f.block.serialized);
+        });
+    }
+
+    @Test void eitherDoorHalfUpdatesThePairAndSecondFailureRestoresBoth() {
+        for (String half : new String[]{"lower", "upper"}) {
+            Fixture f = new Fixture("COPPER_DOOR", "[facing=east,half=" + half + ",hinge=right,open=true,powered=true]");
+            f.block.partner = new FakeBlock(f.block.serialized.replace("half=" + half, "half=" + (half.equals("lower") ? "upper" : "lower")));
+            String first = f.block.serialized, second = f.block.partner.serialized;
+            f.block.partner.failNextUpdate = true;
+            PlayerInteractEvent failed = f.click(EquipmentSlot.HAND);
+            f.listener.onCopperBlockClick(failed);
+            assertConsumed(failed);
+            assertEquals(first, f.block.serialized);
+            assertEquals(second, f.block.partner.serialized);
+            assertEquals(0, f.sounds.get());
+            f.listener.onCopperBlockClick(f.click(EquipmentSlot.HAND));
+            assertEquals(first.replace("minecraft:copper", "minecraft:exposed_copper"), f.block.serialized);
+            assertEquals(second.replace("minecraft:copper", "minecraft:exposed_copper"), f.block.partner.serialized);
+            assertEquals(1, f.sounds.get());
+        }
+    }
+
+    @Test void invalidDoorPartnersFailBeforeAnyWrite() {
+        for (String partner : new String[]{null, "minecraft:copper_door[half=lower]", "minecraft:exposed_copper_door[half=upper]", "minecraft:stone"}) {
+            Fixture f = new Fixture("COPPER_DOOR", "[half=lower]");
+            f.block.partner = partner == null ? null : new FakeBlock(partner);
+            PlayerInteractEvent event = f.click(EquipmentSlot.HAND);
+            f.listener.onCopperBlockClick(event);
+            assertConsumed(event);
+            assertEquals(0, f.block.writes);
+            if (f.block.partner != null) assertEquals(0, f.block.partner.writes);
+        }
+    }
+
+    @Test void capturedTileSnapshotReappliesAllOpaqueDataAfterReplacement() {
+        for (String material : new String[]{"COPPER_CHEST", "COPPER_GOLEM_STATUE"}) {
+            if (Material.getMaterial(material) == null) continue;
+            Fixture f = new Fixture(material);
+            Map<String, Object> original = Map.of("inventory", Map.of(0, "diamond[name=Gift,pdc=opaque]", 26, "emerald*12"),
+                    "name", "Named copper", "lock", "Secret", "loot", "example:loot/42", "pdc", Map.of("plugin:key", "opaque"));
+            f.block.tile.putAll(original);
+            f.listener.onCopperBlockClick(f.click(EquipmentSlot.HAND));
+            assertEquals(Material.valueOf("EXPOSED_" + material), f.block.type());
+            assertEquals(original, f.block.tile);
+        }
+    }
+
+    @Test void doubleChestRetainsBothInventoriesAndRollsBackTogether() {
+        if (Material.getMaterial("COPPER_CHEST") == null) return;
+        Fixture f = new Fixture("COPPER_CHEST", "[facing=north,type=left,waterlogged=true]");
+        f.block.partner = new FakeBlock("minecraft:copper_chest[facing=north,type=right,waterlogged=true]");
+        f.block.tile.put("inventory", "left: named enchanted items");
+        f.block.partner.tile.put("inventory", "right: other items");
+        f.block.partner.failNextUpdate = true;
+        f.listener.onCopperBlockClick(f.click(EquipmentSlot.HAND));
+        assertEquals(Material.getMaterial("COPPER_CHEST"), f.block.type());
+        assertEquals(Material.getMaterial("COPPER_CHEST"), f.block.partner.type());
+        assertEquals("left: named enchanted items", f.block.tile.get("inventory"));
+        assertEquals("right: other items", f.block.partner.tile.get("inventory"));
+        assertEquals(0, f.sounds.get());
+        f.listener.onCopperBlockClick(f.click(EquipmentSlot.HAND));
+        assertEquals(Material.getMaterial("EXPOSED_COPPER_CHEST"), f.block.type());
+        assertEquals(Material.getMaterial("EXPOSED_COPPER_CHEST"), f.block.partner.type());
+        assertEquals("left: named enchanted items", f.block.tile.get("inventory"));
+        assertEquals("right: other items", f.block.partner.tile.get("inventory"));
+        assertEquals(1, f.sounds.get());
+    }
+
     @Test void freshCopperAdvancesThroughProductionListenerAndConsumesBothUses() {
         Fixture f = new Fixture("COPPER_BLOCK");
         PlayerInteractEvent event = f.click(EquipmentSlot.HAND);
@@ -152,11 +269,13 @@ class CopperBackTest {
         boolean failNextUpdate;
         Map<String, Object> tile = new HashMap<>();
         FakeBlock partner;
+        final World world = proxy(World.class, (p, m, a) -> m.getName().equals("isChunkLoaded") ? true : defaultValue(m.getReturnType()));
         final Block block = proxy(Block.class, (p, m, a) -> switch (m.getName()) {
             case "getType" -> type();
             case "getBlockData" -> data(serialized);
             case "getState" -> snapshot();
             case "getRelative" -> partner == null ? null : partner.block;
+            case "getWorld" -> world;
             case "getX", "getY", "getZ" -> 0;
             default -> defaultValue(m.getReturnType());
         });
@@ -192,10 +311,20 @@ class CopperBackTest {
     }
 
     static BlockData data(String serialized) {
-        return proxy(BlockData.class, (p, m, a) -> switch (m.getName()) {
+        Material material = material(serialized);
+        Class<? extends BlockData> type = material.name().endsWith("_DOOR") ? Door.class
+                : material.name().endsWith("_CHEST") ? Chest.class : BlockData.class;
+        return proxy(type, (p, m, a) -> switch (m.getName()) {
             case "getAsString" -> serialized;
             case "getMaterial" -> material(serialized);
             case "clone" -> data(serialized);
+            case "getHalf" -> serialized.contains("half=upper") ? Bisected.Half.TOP : Bisected.Half.BOTTOM;
+            case "getType" -> serialized.contains("type=left") ? Chest.Type.LEFT
+                    : serialized.contains("type=right") ? Chest.Type.RIGHT : Chest.Type.SINGLE;
+            case "getFacing" -> {
+                java.util.regex.Matcher facing = java.util.regex.Pattern.compile("facing=([a-z]+)").matcher(serialized);
+                yield facing.find() ? BlockFace.valueOf(facing.group(1).toUpperCase(java.util.Locale.ROOT)) : BlockFace.NORTH;
+            }
             default -> defaultValue(m.getReturnType());
         });
     }
