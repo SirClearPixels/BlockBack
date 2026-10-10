@@ -7,6 +7,7 @@ import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Orientable;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
@@ -50,6 +51,7 @@ public class EventListener implements Listener {
 
     private final Plugin plugin;
     private final CopperBack copperBack;
+    private final ToolDurability toolDurability;
 
     // bStats usage counters — incremented on each successful restoration.
     // Read via pollAndReset*Count(), which atomically returns the count and resets to 0.
@@ -63,8 +65,13 @@ public class EventListener implements Listener {
     }
 
     EventListener(Plugin plugin, CopperBack copperBack) {
+        this(plugin, copperBack, new ToolDurability());
+    }
+
+    EventListener(Plugin plugin, CopperBack copperBack, ToolDurability toolDurability) {
         this.plugin = plugin;
         this.copperBack = copperBack;
+        this.toolDurability = toolDurability;
     }
 
     static boolean isAxe(Material material) {
@@ -162,10 +169,13 @@ public class EventListener implements Listener {
      * 
      * @param e the player interact event
      */
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onBlockClick(PlayerInteractEvent e) {
         // Only proceed if right-click on block
         if (e.getAction() != Action.RIGHT_CLICK_BLOCK) return;
+        // Predictive block-only denial has no provenance in Bukkit. Respect both channels
+        // conservatively; never use isCancelled alone or turn a denied channel into ALLOW.
+        if (e.useInteractedBlock() == Event.Result.DENY || e.useItemInHand() == Event.Result.DENY) return;
 
         Block block = e.getClickedBlock();
         Player player = e.getPlayer();
@@ -208,17 +218,21 @@ public class EventListener implements Listener {
                     block.setType(unstrippedMaterial);
                 }
 
-                // Play configurable sound
+                if (block.getType() != unstrippedMaterial || (axis != null
+                        && (!(block.getBlockData() instanceof Orientable readback) || readback.getAxis() != axis))) return;
+                barkbackCount.incrementAndGet();
+                e.setCancelled(true);
+                toolDurability.charge(player, e.getHand(), item, ToolDurability.Feature.BARKBACK);
+
+                // Sound failure must not undo the completed action or its durability use.
                 SoundConfig.SoundSettings soundSettings = soundConfig.getBarkBackSettings();
-                if (soundSettings.enabled) {
+                try { if (soundSettings.enabled) {
                     player.playSound(player.getLocation(),
                             soundSettings.sound,
                             soundSettings.category,
                             soundSettings.volume,
                             soundSettings.pitch);
-                }
-                barkbackCount.incrementAndGet();
-                e.setCancelled(true);
+                } } catch (RuntimeException failure) { plugin.getLogger().warning("Could not play BarkBack sound."); }
                 return;
             }
         }

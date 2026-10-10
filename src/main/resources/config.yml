@@ -1,3 +1,11 @@
 # Check published stable releases at startup and daily; notify admins when they join.
 update-checker:
   enabled: true
+
+# One normal tool use after a successful BlockBack action; independent server settings.
+# Missing keys also default to false. Apply changes with /blockback reload.
+tool-durability:
+  barkback: false
+  pathback: false
+  farmback: false
+  copperback: false

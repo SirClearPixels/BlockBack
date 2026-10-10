@@ -24,6 +24,7 @@ public final class Blockback extends JavaPlugin {
     /** bStats plugin ID — see https://bstats.org/plugin/bukkit/BlockBack/31058 */
     private static final int BSTATS_PLUGIN_ID = 31058;
     private UpdateChecker updateChecker;
+    private final ToolDurability toolDurability = new ToolDurability();
 
     /**
      * Called when the plugin is enabled. Initializes managers, registers events,
@@ -42,6 +43,10 @@ public final class Blockback extends JavaPlugin {
                 "volatile singletons, region ownership assertions enabled.");
         }
 
+        // Gameplay config is independent of the optional release checker.
+        saveDefaultConfig();
+        toolDurability.publish(ToolDurability.Settings.load(getConfig(), getLogger()::warning));
+
         // Initialize managers for persistent settings and sound configuration
         PlayerDataManager.init(this);
         SoundConfig.init(this);
@@ -49,7 +54,7 @@ public final class Blockback extends JavaPlugin {
         // Register the event listener
         EventListener eventListener;
         try {
-            eventListener = new EventListener(this);
+            eventListener = new EventListener(this, new CopperBack(this), toolDurability);
             Bukkit.getPluginManager().registerEvents(eventListener, this);
             getLogger().info("EventListener registered successfully.");
         } catch (Exception e) {
@@ -80,7 +85,7 @@ public final class Blockback extends JavaPlugin {
         // Create one instance of CommandManager and register for all commands.
         CommandManager commandManager;
         try {
-            commandManager = new CommandManager(PlayerDataManager::getInstance, this::reloadUpdateConfig);
+            commandManager = new CommandManager(PlayerDataManager::getInstance, this::reloadPluginConfig);
         } catch (Exception e) {
             getLogger().severe("Failed to create CommandManager: " + e.getMessage());
             e.printStackTrace();
@@ -124,7 +129,6 @@ public final class Blockback extends JavaPlugin {
 
         // Release checks are optional; discovery failure must not disable gameplay.
         try {
-            saveDefaultConfig();
             updateChecker = new UpdateChecker(getDescription().getVersion(), getLogger());
             Bukkit.getPluginManager().registerEvents(updateChecker, this);
             updateChecker.applyEnabled(updateChecksEnabled());
@@ -145,12 +149,22 @@ public final class Blockback extends JavaPlugin {
         return true;
     }
 
-    private void reloadUpdateConfig() {
+    private synchronized void reloadPluginConfig() {
         try {
-            reloadConfig();
-            if (updateChecker != null) updateChecker.applyEnabled(updateChecksEnabled());
+            reloadSharedConfig(this::reloadConfig, this::getConfig, toolDurability, getLogger()::warning,
+                    () -> { if (updateChecker != null) updateChecker.applyEnabled(updateChecksEnabled()); });
         } catch (Exception exception) {
-            getLogger().warning("Could not reload BlockBack update-check configuration.");
+            getLogger().warning("Could not reload BlockBack configuration.");
+        }
+    }
+
+    // One serialized reload/publication used by the lifecycle and the existing command callback.
+    static void reloadSharedConfig(Runnable reload, java.util.function.Supplier<org.bukkit.configuration.file.FileConfiguration> config,
+                                   ToolDurability durability, java.util.function.Consumer<String> warning, Runnable update) {
+        synchronized (durability) {
+            reload.run();
+            durability.publish(ToolDurability.Settings.load(config.get(), warning));
+            update.run();
         }
     }
 
